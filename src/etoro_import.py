@@ -2,7 +2,7 @@ import argparse
 
 from parsers.EtoroImport import EtoroImport
 
-parser = argparse.ArgumentParser("etoro-import.py")
+parser = argparse.ArgumentParser("etoro_import.py")
 
 parser.add_argument(
     'source',
