@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "stock-to-cryptotaxcalculator.io"
+version = "0.1.0"
+description = "Parse stock data to cryptotaxcalculator.io format in order to do your stock taxes in the UK."
+authors = ["Mikolaj Misiurewicz <mikolaj.misiurewicz@gmail.com>"]
+license = "GPL-3.0-only"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pandas = "^1.4.3"
+openpyxl = "^3.0.10"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
