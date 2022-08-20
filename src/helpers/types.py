@@ -6,6 +6,7 @@ from pydantic import BaseModel, validator
 
 class OutputType(Enum):
     FiatDeposit = 'fiat-deposit'
+    FiatWithdrawal = 'fiat-withdrawal'
 
 
 # noinspection PyMethodParameters

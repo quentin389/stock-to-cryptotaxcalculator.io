@@ -1,49 +1,14 @@
-from typing import Optional, NamedTuple
+from logging import warning
+from typing import Optional
 
 import pandas
-from pandas import Timestamp
 from pydantic import validate_arguments
 
 from helpers.csv import save_output
 from helpers.data_frames import remove_column_spaces, get_one_by_key
 from helpers.types import OutputRow, OutputType
 from helpers.validation import validate
-
-
-class TransactionTuple(NamedTuple):
-    Index: int
-    Date: Timestamp
-    Type: str
-    Details: str
-    Amount: float
-    Units: float
-    Realized_Equity_Change: float
-    Realized_Equity: float
-    Balance: float
-    Position_ID: str
-    Asset_type: str
-    NWA: int
-
-
-class PositionTuple(NamedTuple):
-    Index: int
-    Action: str
-    Amount: float
-    Units: float
-    Open_Date: Timestamp
-    Close_Date: Timestamp
-    Leverage: int
-    Spread: float
-    Profit: float
-    Open_Rate: float
-    Close_Rate: float
-    Take_profit_rate: float
-    Stop_lose_rate: float
-    Rollover_Fees_and_Dividends: float
-    Copied_From: str
-    Type: str
-    ISIN: str
-    Notes: str
+from parsers.types import TransactionTuple, PositionTuple
 
 
 class EtoroImport:
@@ -97,35 +62,56 @@ class EtoroImport:
         )
 
         if transaction.Type == 'Deposit' and position is None:
-            return self.__parse_deposit(transaction)
+            return self.__parse_deposit_or_withdrawal(transaction, is_deposit=True)
 
-        return None
-        # TODO: raise Exception(f"Row {str(transaction.Index)} of type '{transaction.Type}' cannot be parsed.")
+        if transaction.Type == 'Withdraw Request' and position is None:
+            return self.__parse_deposit_or_withdrawal(transaction, is_deposit=False)
 
-    def __parse_deposit(self, transaction: TransactionTuple) -> OutputRow:
+        if transaction.Type == 'Edit Stop Loss':
+            return None
+
+        if transaction.Type == 'Withdraw Fee':
+            if transaction.Amount != 0:
+                warning("It appears that there is a withdrawal fee. Saving this data is NOT IMPLEMENTED.")
+            return None
+
+        if transaction.Type in {'Open Position', 'Position closed', 'corp action: Split', 'Dividend', 'Rollover Fee',
+                                'Interest Payment'}:
+            # warning(f'{transaction.Type} is yet to be implemented')
+            return None  # TODO
+
+        raise Exception(f"Row {str(transaction.Index)} of type '{transaction.Type}' cannot be parsed.")
+
+    def __parse_deposit_or_withdrawal(self, transaction: TransactionTuple, is_deposit: bool) -> OutputRow:
+        operation_name = "Deposit" if is_deposit else "Withdrawal"
         validate(
             condition=transaction.Amount == transaction.Realized_Equity_Change,
-            error="Deposit amount inconsistent.",
+            error=f'{operation_name} amount inconsistent.',
+            context=transaction
+        )
+        validate(
+            condition=transaction.Position_ID == '' and transaction.Asset_type == '',
+            error=f'{operation_name} cannot have Position ID or Asset type.',
             context=transaction
         )
 
         return OutputRow(
             TimestampUTC=transaction.Date,
-            Type=OutputType.FiatDeposit,
-            From='Bank',
-            To='eToro',
+            Type=OutputType.FiatDeposit if is_deposit else OutputType.FiatWithdrawal,
+            From='Bank' if is_deposit else 'eToro',
+            To='eToro' if is_deposit else 'Bank',
             Description=self.__make_description(transaction),
 
-            # Whatever is the actual transaction.Details currency, it gets converted to USD as the only accepted
-            # currency (this is validated in self.__pre_validate). So, we can skip the conversion, which is not even
-            # recorded in the eToro file, and use transaction.Amount as the USD amount.
+            # Whatever is the actual transaction.Details currency for a deposit, it gets converted to USD as the
+            # only currency I parse (this is validated in self.__pre_validate). So, I can skip the conversion, which
+            # is not even recorded in the eToro file, and use transaction.Amount as the USD amount.
             BaseCurrency='USD',
-            BaseAmount=transaction.Amount,
+            BaseAmount=transaction.Amount if is_deposit else -transaction.Amount,
 
-            # Deposits do not have IDs on eToro
+            # Deposits and withdrawals do not have IDs on eToro
             ID='',
         )
 
     @staticmethod
     def __make_description(transaction: TransactionTuple) -> str:
-        return f'eToro {transaction.Type} {transaction.Details}'
+        return f'eToro {transaction.Type} {transaction.Details}'.strip()
