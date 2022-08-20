@@ -1,3 +1,6 @@
-def validate(condition: bool, error: str) -> None:
+from typing import Any
+
+
+def validate(condition: bool, error: str, context: Any) -> None:
     if not condition:
-        raise Exception(error)
+        raise Exception(f'{error}\ncontext:\n{str(context)}')

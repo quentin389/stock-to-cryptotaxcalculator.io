@@ -9,6 +9,7 @@ license = "GPL-3.0-only"
 python = "^3.9"
 pandas = "^1.4.3"
 openpyxl = "^3.0.10"
+pydantic = "^1.9.2"
 
 [tool.poetry.dev-dependencies]
 
