@@ -1,4 +1,3 @@
-import re
 from logging import warning
 from typing import Optional, Union
 
@@ -7,7 +6,8 @@ from pydantic import validate_arguments
 
 from helpers import data_frames
 from helpers.csv import save_output
-from config.types import OutputRow, OutputType, Exchange
+from config.types import OutputRow, OutputType, Exchange, TickerSuffix
+from helpers.stock_market import parse_ticker
 from helpers.validation import validate
 from config.config import translate_tickers_etoro
 from parsers.etoro_types import TransactionRow, PositionRow
@@ -95,15 +95,21 @@ class EtoroImport:
                 warning("It appears that there is a withdrawal fee. Saving this data is NOT IMPLEMENTED.")
             return None
 
-        if transaction.Type == 'Open Position' and position is not None and transaction.Asset_type == 'Crypto':
-            return self.__parse_open_crypto_position(transaction, position)
+        if transaction.Type == 'Open Position' and position is not None and (
+                transaction.Asset_type == 'Crypto' or transaction.Asset_type == 'ETF'):
+            return self.__parse_open_position(
+                transaction, position, TickerSuffix.Empty if transaction.Asset_type == 'Crypto' else TickerSuffix.Stock
+            )
 
-        if transaction.Type == 'Position closed' and position is not None and transaction.Asset_type == 'Crypto':
-            return self.__parse_close_crypto_position(transaction, position)
+        if transaction.Type == 'Position closed' and position is not None and (
+                transaction.Asset_type == 'Crypto' or transaction.Asset_type == 'ETF'):
+            return self.__parse_close_position(
+                transaction, position, TickerSuffix.Empty if transaction.Asset_type == 'Crypto' else TickerSuffix.Stock
+            )
 
-        if transaction.Asset_type != 'Crypto' and transaction.Type in {'Open Position', 'Position closed',
-                                                                       'corp action: Split', 'Dividend', 'Rollover Fee',
-                                                                       'Interest Payment'}:
+        exclusions = {'Open Position', 'Position closed', 'corp action: Split', 'Dividend', 'Rollover Fee',
+                      'Interest Payment'}
+        if transaction.Asset_type != 'Crypto' and transaction.Asset_type != 'ETF' and transaction.Type in exclusions:
             # warning(f'{transaction.Type} is yet to be implemented')
             return None  # TODO
 
@@ -129,7 +135,7 @@ class EtoroImport:
             Type=OutputType.FiatDeposit if is_deposit else OutputType.FiatWithdrawal,
             From=Exchange.Bank if is_deposit else Exchange.Etoro,
             To=Exchange.Etoro if is_deposit else Exchange.Bank,
-            Description=f'{Exchange.Etoro.value} {transaction.Type} {transaction.Details}'.strip(),
+            Description=f'{Exchange.Etoro} {transaction.Type} {transaction.Details}'.strip(),
 
             # What offset are dates in eToro files? I think it's some US timezone, but I'm not really sure.
             # I treat it as UTC for simplicity though. This could mess up "same day rule" but I have no idea how to
@@ -148,8 +154,9 @@ class EtoroImport:
             ID='',
         )
 
-    def __parse_open_crypto_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
-        ticker = self.__validate_ticker(transaction.Details)
+    def __parse_open_position(self, transaction: TransactionRow, position: PositionRow,
+                              ticker_suffix: TickerSuffix) -> OutputRow:
+        ticker = parse_ticker(transaction.Details, translate_tickers_etoro, ticker_suffix)
         validate(
             condition=transaction.Date == position.Open_Date and transaction.Amount == position.Amount,
             error="Data is consistent between Transaction and Position.",
@@ -171,7 +178,7 @@ class EtoroImport:
             From=Exchange.Etoro,
             To=Exchange.Etoro,
             ID=self.__make_id(transaction.Position_ID),
-            Description=f'{Exchange.Etoro.value} {position.Action}: {transaction.Type}',
+            Description=f'{Exchange.Etoro} {position.Action}: {transaction.Type}',
 
             # [1] Positions that are closed in more than one transaction require matching the opening trade with other
             # positions that have unrelated Position IDs, in order to get the full open price. This match is just
@@ -183,8 +190,9 @@ class EtoroImport:
             QuoteCurrency=self.__base_fiat,
         )
 
-    def __parse_close_crypto_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
-        ticker = self.__validate_ticker(transaction.Details)
+    def __parse_close_position(self, transaction: TransactionRow, position: PositionRow,
+                               ticker_suffix: TickerSuffix) -> OutputRow:
+        ticker = parse_ticker(transaction.Details, translate_tickers_etoro, ticker_suffix)
         validate(
             condition=transaction.Date == position.Close_Date and transaction.Amount == position.Profit,
             error="Data is consistent between Transaction and Position.",
@@ -217,7 +225,7 @@ class EtoroImport:
             From=Exchange.Etoro,
             To=Exchange.Etoro,
             ID=self.__make_id(transaction.Position_ID),
-            Description=f'{Exchange.Etoro.value} {position.Action}: {transaction.Type}',
+            Description=f'{Exchange.Etoro} {position.Action}: {transaction.Type}',
 
             # For open transaction "amount" is the amount. But for closing transaction it's actually the profit.
             # I don't understand how this make sense, but it is what it is.
@@ -253,18 +261,4 @@ class EtoroImport:
 
     @staticmethod
     def __make_id(base_id: str) -> str:
-        return f'{Exchange.Etoro.value}:{base_id}'
-
-    @staticmethod
-    def __validate_ticker(ticker: str, prefix: str = None) -> str:
-        if ticker in translate_tickers_etoro:
-            ticker = translate_tickers_etoro[ticker]
-
-        if re.match(r'^[a-zA-Z]+$', ticker) is None:
-            warning(
-                f"The ticker '{ticker}' contains characters other than letters. This increases the probability "
-                "that this isn't a universally recognised name, and can lead to shares not being matched "
-                "between exchanges. Consider adding a translation into 'translate_tickers_etoro' dict."
-            )
-
-        return ticker if prefix is None else prefix + ticker
+        return f'{Exchange.Etoro}:{base_id}'

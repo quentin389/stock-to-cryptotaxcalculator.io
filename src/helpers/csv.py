@@ -14,4 +14,5 @@ def save_output(target_file: str, data: list[OutputRow]) -> None:
                            row.QuoteAmount, row.FeeCurrency, row.FeeAmount,
                            row.From, row.To, row.ID, row.Description)
                           for row in data])
-        print(f'\nOutput file saved as {file_name}. {len(data)} rows saved.')
+        print(f'\nOutput file saved as {file_name}. '
+              f'This should import {len(data)} transactions to cryptotaxcalculator.io.')
