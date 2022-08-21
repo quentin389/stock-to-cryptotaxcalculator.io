@@ -1,10 +1,11 @@
+import re
 from logging import warning
 from typing import Optional, Union
 
 import pandas
 from pydantic import validate_arguments
 
-from helpers import data_frames
+from helpers import data_frames, date_time
 from helpers.csv import save_output
 from config.types import OutputRow, OutputType, Exchange, TickerSuffix
 from helpers.stock_market import parse_ticker
@@ -19,6 +20,8 @@ class EtoroImport:
 
     # I don't know if other formats are possible in the source file. This is the one that I have.
     __date_format = '%d/%m/%Y %H:%M:%S'
+
+    __split_warning = True
 
     def __init__(self, source: str, target: str):
         self.__source = source
@@ -83,33 +86,26 @@ class EtoroImport:
             error="Only CFDs can be leveraged.",
             context=position
         )
-
-        if transaction.Type == 'Deposit' and position is None:
-            return self.__parse_deposit_or_withdrawal(transaction, is_deposit=True)
-
-        if transaction.Type == 'Withdraw Request' and position is None:
-            return self.__parse_deposit_or_withdrawal(transaction, is_deposit=False)
-
         if transaction.Type == 'Withdraw Fee':
             if transaction.Amount != 0:
                 warning("It appears that there is a withdrawal fee. Saving this data is NOT IMPLEMENTED.")
             return None
 
-        if transaction.Type == 'Open Position' and position is not None and (
-                transaction.Asset_type == 'Crypto' or transaction.Asset_type == 'ETF'):
-            return self.__parse_open_position(
-                transaction, position, TickerSuffix.Empty if transaction.Asset_type == 'Crypto' else TickerSuffix.Stock
-            )
+        if position is None:
+            if transaction.Type == 'Deposit':
+                return self.__parse_deposit_or_withdrawal(transaction, is_deposit=True)
+            if transaction.Type == 'Withdraw Request':
+                return self.__parse_deposit_or_withdrawal(transaction, is_deposit=False)
 
-        if transaction.Type == 'Position closed' and position is not None and (
-                transaction.Asset_type == 'Crypto' or transaction.Asset_type == 'ETF'):
-            return self.__parse_close_position(
-                transaction, position, TickerSuffix.Empty if transaction.Asset_type == 'Crypto' else TickerSuffix.Stock
-            )
+        if position is not None and transaction.Asset_type != 'CFD':
+            if transaction.Type == 'Open Position':
+                return self.__parse_open_position(transaction, position)
+            if transaction.Type == 'Position closed':
+                return self.__parse_close_position(transaction, position)
+            if transaction.Type == 'corp action: Split':
+                return self.__parse_stock_split(transaction, position)
 
-        exclusions = {'Open Position', 'Position closed', 'corp action: Split', 'Dividend', 'Rollover Fee',
-                      'Interest Payment'}
-        if transaction.Asset_type != 'Crypto' and transaction.Asset_type != 'ETF' and transaction.Type in exclusions:
+        if transaction.Type in {'Dividend', 'Interest Payment'} or transaction.Asset_type == 'CFD':
             # warning(f'{transaction.Type} is yet to be implemented')
             return None  # TODO
 
@@ -154,18 +150,26 @@ class EtoroImport:
             ID='',
         )
 
-    def __parse_open_position(self, transaction: TransactionRow, position: PositionRow,
-                              ticker_suffix: TickerSuffix) -> OutputRow:
-        ticker = parse_ticker(transaction.Details, translate_tickers_etoro, ticker_suffix)
+    def __parse_open_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
+        ticker = self.__parse_ticker(transaction.Details, transaction.Asset_type)
         validate(
-            condition=transaction.Date == position.Open_Date and transaction.Amount == position.Amount,
+            # I found a case where a transaction date and position date differed by 1 second. ...
+            condition=date_time.almost_identical(transaction.Date, position.Open_Date, offset_sec=1)
+                      and transaction.Amount == position.Amount,
             error="Data is consistent between Transaction and Position.",
             context=[transaction, position]
         )
         validate(
-            condition=transaction.Realized_Equity_Change == 0 and position.Rollover_Fees_and_Dividends == 0,
-            error="Stock and Crypto Open Transactions do not change Realized Equity and have no Fees.",
+            condition=transaction.Realized_Equity_Change == 0,
+            error="Stock-like asset Open Transactions do not change Realized Equity.",
             context=[transaction, position]
+        )
+
+        total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
+        validate(
+            condition=position.Rollover_Fees_and_Dividends == total_dividends,
+            error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
+            context=position
         )
 
         other_partial_amounts = self.__get_all_other_partial_trade_positions(position)['Amount'].sum()
@@ -190,11 +194,11 @@ class EtoroImport:
             QuoteCurrency=self.__base_fiat,
         )
 
-    def __parse_close_position(self, transaction: TransactionRow, position: PositionRow,
-                               ticker_suffix: TickerSuffix) -> OutputRow:
-        ticker = parse_ticker(transaction.Details, translate_tickers_etoro, ticker_suffix)
+    def __parse_close_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
+        ticker = self.__parse_ticker(transaction.Details, transaction.Asset_type)
         validate(
-            condition=transaction.Date == position.Close_Date and transaction.Amount == position.Profit,
+            condition=date_time.almost_identical(transaction.Date, position.Close_Date, offset_sec=1)
+                      and transaction.Amount == position.Profit,
             error="Data is consistent between Transaction and Position.",
             context=[transaction, position]
         )
@@ -203,11 +207,14 @@ class EtoroImport:
             error="Transaction close amount is equal to equity change.",
             context=transaction
         )
+
+        total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
         validate(
-            condition=position.Rollover_Fees_and_Dividends == 0,
-            error="Stock and Crypto Closing Transactions have no Fees.",
-            context=[transaction, position]
+            condition=position.Rollover_Fees_and_Dividends == total_dividends,
+            error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
+            context=position
         )
+
         validate(
             condition=self.__check_partial_positions_consistency(position),
             error=f"Please use a source file with transaction data starting at least on {position.Open_Date.date()} "
@@ -232,15 +239,74 @@ class EtoroImport:
             QuoteAmount=round(position.Amount + transaction.Amount, 4),
         )
 
+    def __parse_stock_split(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
+        validate(
+            condition=transaction.Amount == 0 and transaction.Units != transaction.Units
+                      and transaction.Realized_Equity_Change == 0 and transaction.Balance == 0,
+            error="Stock split transaction is consistent with expectations.",
+            context=transaction
+        )
+
+        details_split = re.match(r'^(\w+) (\d+):(\d+)$', transaction.Details)
+        validate(
+            condition=bool(details_split),
+            error=f"The transaction information '{transaction.Details}' for a stock split is incorrect.",
+            context=transaction
+        )
+
+        ticker, split_to, split_from = details_split.groups()
+        ticker = self.__parse_ticker(ticker, transaction.Asset_type)
+        split_from = int(split_from)
+        split_to = int(split_to)
+        validate(
+            condition=split_from == 1,
+            error="Only simple 'x:1' stock splits are supported.",
+            context=transaction
+        )
+        validate(
+            condition=self.__get_transactions_of_type(position.Index, 'corp action: Split').shape[0] == 1,
+            error="Only one stock split per Position ID is supported.",
+            context=transaction
+        )
+
+        if self.__split_warning:
+            warning(
+                "Stock splits will be categorized as 'chain-split' in cryptotaxcalculator.io. In order for this"
+                " to work correctly, you have to ignore the 'missing market price' warnings for those transactions."
+            )
+            self.__split_warning = False
+
+        return OutputRow(
+            TimestampUTC=transaction.Date,
+            From=Exchange.Etoro,
+            To=Exchange.Etoro,
+            ID=self.__make_id(transaction.Position_ID),
+            Description=f'{Exchange.Etoro} {position.Action}: {transaction.Type}',
+
+            # This seems like the best approximation of a stock split. The new shares appear out of nowhere,
+            # as a result of a corporate action. Even though cryptotaxcalculator.io says that this transaction type
+            # should have 0 cost basis, this is not the case, and requires setting this by hand, by ignoring the
+            # 'missing market price' warning after import. At least that's how it works currently.
+            # After that, because of HMRC Section 104 rules, this should have the cost basis correctly adjusted,
+            # because the 0 cost basis will proportionally 'steal' the cost basis from existing shares. I think.
+            # Plus, the stock split actually IS a 0 cost basis share issue, so it fits.
+            Type=OutputType.ChainSplit,
+
+            # I have to compute the number of new shares issued during the stock split as this isn't mentioned.
+            BaseAmount=round(position.Units - position.Units / split_to, 8),
+            BaseCurrency=ticker,
+
+        )
+
     def __check_partial_positions_consistency(self, position: PositionRow) -> bool:
         # [2] This check is done to prevent issues with situation described in "[1]". It should ensure consistency.
         # I make sure that for any position that does not have an opening trade itself, which means it could be
         # a partial position, an opening trade for the original position exists in the file. This way the opening
         # price can be computed correctly.
-        if self.__get_matching_open_transactions(position.Index).shape[0] == 1:
+        if self.__get_transactions_of_type(position.Index, 'Open Position').shape[0] == 1:
             return True
         for index in self.__get_all_other_partial_trade_positions(position).index:
-            if self.__get_matching_open_transactions(index).shape[0] == 1:
+            if self.__get_transactions_of_type(index, 'Open Position').shape[0] == 1:
                 return True
         return False
 
@@ -253,12 +319,18 @@ class EtoroImport:
             & (self.__positions['Type'] == position.Type)
             ]
 
-    def __get_matching_open_transactions(self, position_id: Union[str, int]) -> pandas.DataFrame:
+    def __get_transactions_of_type(self, position_id: Union[str, int], transaction_type: str) -> pandas.DataFrame:
         return self.__transactions.loc[
             (self.__transactions['Position_ID'] == str(position_id))
-            & (self.__transactions['Type'] == 'Open Position')
+            & (self.__transactions['Type'] == transaction_type)
             ]
 
     @staticmethod
     def __make_id(base_id: str) -> str:
         return f'{Exchange.Etoro}:{base_id}'
+
+    @staticmethod
+    def __parse_ticker(ticker: str, asset_type: str) -> str:
+        return parse_ticker(
+            ticker, translate_tickers_etoro, TickerSuffix.Empty if asset_type == 'Crypto' else TickerSuffix.Stock
+        )

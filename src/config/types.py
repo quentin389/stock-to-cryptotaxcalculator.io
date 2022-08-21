@@ -1,5 +1,7 @@
 from enum import Enum
+from typing import Optional
 
+import numpy
 from pandas import Timestamp
 from pydantic import BaseModel, validator
 
@@ -23,6 +25,7 @@ class OutputType(str, Enum):
     FiatWithdrawal = 'fiat-withdrawal'
     Buy = 'buy'
     Sell = 'sell'
+    ChainSplit = 'chain-split'
 
 
 # noinspection PyMethodParameters
@@ -43,3 +46,9 @@ class OutputRow(BaseModel):
     @validator('TimestampUTC')
     def convert_timestamp_to_string(cls, timestamp: Timestamp) -> str:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+    @validator('BaseAmount', 'QuoteAmount', 'FeeAmount')
+    def avoid_scientific_float_notation(cls, value: Optional[float]) -> str:
+        if value is None:
+            return ''
+        return numpy.format_float_positional(value, trim='-')
