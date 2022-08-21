@@ -3,7 +3,7 @@ from typing import NamedTuple
 from pandas import Timestamp
 
 
-class TransactionTuple(NamedTuple):
+class TransactionRow(NamedTuple):
     Index: int
     Date: Timestamp
     Type: str
@@ -18,7 +18,7 @@ class TransactionTuple(NamedTuple):
     NWA: int
 
 
-class PositionTuple(NamedTuple):
+class PositionRow(NamedTuple):
     Index: int
     Action: str
     Amount: float

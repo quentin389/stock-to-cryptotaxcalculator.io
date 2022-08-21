@@ -1,5 +1,13 @@
 # Stock To cryptotaxcalculator.io (UK only)
 
+## Warnings
+* I do not guarantee that anything here will work or will be HMRC-compliant.
+* I have created this based on my transactions files.
+  Many things are not implemented.
+* Do not upload multiple manual files covering the same transactions or re-upload
+  the same file in cryptotaxcalculator.io. This may mess things up.
+  Delete the old file first, then add the new one.
+
 ## Purpose
 
 UK taxes are, in the simplest situation, the same for crypto and stock.
@@ -20,3 +28,6 @@ This parser accepts the following formats:
 * eToro xls format: `etoro-account-statement-*.xlsx` files
 
 and that's it
+
+## How to use
+

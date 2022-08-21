@@ -1,6 +1,6 @@
 import csv
 
-from helpers.types import OutputRow
+from config.types import OutputRow
 
 
 def save_output(target_file: str, data: list[OutputRow]) -> None:

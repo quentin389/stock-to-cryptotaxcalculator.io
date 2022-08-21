@@ -1,10 +1,14 @@
 from typing import Optional, Any
 
-from pandas import DataFrame
+from pandas import DataFrame, to_datetime
 
 
 def remove_column_spaces(data_frame: DataFrame, replace_with: str = '_') -> None:
     data_frame.columns = data_frame.columns.str.replace(' ', replace_with)
+
+
+def parse_date(data_frame: DataFrame, column_name: str, date_format: str) -> None:
+    data_frame[column_name] = to_datetime(data_frame[column_name], format=date_format)
 
 
 def get_by_key(data_frame: DataFrame, key: Any) -> Optional[DataFrame]:

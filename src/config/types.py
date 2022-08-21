@@ -4,9 +4,16 @@ from pandas import Timestamp
 from pydantic import BaseModel, validator
 
 
+class Exchange(Enum):
+    Etoro = 'eToro'
+    Bank = 'Bank'
+
+
 class OutputType(Enum):
     FiatDeposit = 'fiat-deposit'
     FiatWithdrawal = 'fiat-withdrawal'
+    Buy = 'buy'
+    Sell = 'sell'
 
 
 # noinspection PyMethodParameters
@@ -19,8 +26,8 @@ class OutputRow(BaseModel):
     QuoteAmount: float = None
     FeeCurrency: str = ''
     FeeAmount: float = None
-    From: str
-    To: str
+    From: Exchange
+    To: Exchange
     ID: str = ''
     Description: str
 
@@ -28,6 +35,6 @@ class OutputRow(BaseModel):
     def convert_timestamp_to_string(cls, timestamp: Timestamp) -> str:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
-    @validator('Type')
+    @validator('Type', 'From', 'To')
     def resolve_enum(cls, enum: Enum):
         return enum.value
