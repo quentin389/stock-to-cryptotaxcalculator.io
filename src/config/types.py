@@ -19,6 +19,9 @@ class Exchange(str, Enum):
     Etoro = 'eToro'
     Bank = 'Bank'
 
+    # This is a special source for easy identification and filtering of dividends income.
+    Dividends = 'Dividends'
+
 
 class OutputType(str, Enum):
     FiatDeposit = 'fiat-deposit'

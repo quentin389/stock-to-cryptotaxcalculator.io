@@ -1,5 +1,4 @@
 import re
-from logging import warning
 from typing import Optional, Union
 
 import pandas
@@ -9,8 +8,7 @@ from helpers import data_frames, date_time
 from helpers.csv import save_output
 from config.types import OutputRow, OutputType, Exchange, TickerSuffix
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate
-from config.config import translate_tickers_etoro
+from helpers.validation import validate, is_nan, show_warning_once
 from parsers.etoro_types import TransactionRow, PositionRow
 
 
@@ -20,8 +18,6 @@ class EtoroImport:
 
     # I don't know if other formats are possible in the source file. This is the one that I have.
     __date_format = '%d/%m/%Y %H:%M:%S'
-
-    __split_warning = True
 
     def __init__(self, source: str, target: str):
         self.__source = source
@@ -54,6 +50,7 @@ class EtoroImport:
         data_frames.remove_column_spaces(self.__positions)
         data_frames.parse_date(self.__positions, 'Open_Date', self.__date_format)
         data_frames.parse_date(self.__positions, 'Close_Date', self.__date_format)
+        self.__validate_positions()
 
         data: list[OutputRow] = []
         row: TransactionRow
@@ -81,14 +78,12 @@ class EtoroImport:
             error="Asset type from transactions and positions should be the same.",
             context=[transaction, position]
         )
-        validate(
-            condition=position is None or position.Type == 'CFD' or position.Leverage == 1,
-            error="Only CFDs can be leveraged.",
-            context=position
-        )
         if transaction.Type == 'Withdraw Fee':
             if transaction.Amount != 0:
-                warning("It appears that there is a withdrawal fee. Saving this data is NOT IMPLEMENTED.")
+                show_warning_once(
+                    group="Withdrawal Fees",
+                    message="It appears that there is a withdrawal fee. Saving this data is NOT IMPLEMENTED."
+                )
             return None
 
         if position is None:
@@ -98,14 +93,18 @@ class EtoroImport:
                 return self.__parse_deposit_or_withdrawal(transaction, is_deposit=False)
 
         if position is not None and transaction.Asset_type != 'CFD':
-            if transaction.Type == 'Open Position':
-                return self.__parse_open_position(transaction, position)
-            if transaction.Type == 'Position closed':
-                return self.__parse_close_position(transaction, position)
-            if transaction.Type == 'corp action: Split':
-                return self.__parse_stock_split(transaction, position)
+            # TODO
+            # if transaction.Type == 'Open Position':
+            #     return self.__parse_open_position(transaction, position)
+            # if transaction.Type == 'Position closed':
+            #     return self.__parse_close_position(transaction, position)
+            # if transaction.Type == 'corp action: Split':
+            #     return self.__parse_stock_split(transaction, position)
+            if transaction.Type == 'Dividend':
+                return self.__parse_dividend(transaction)
+            return None  # TODO
 
-        if transaction.Type in {'Dividend', 'Interest Payment'} or transaction.Asset_type == 'CFD':
+        if transaction.Type == 'Interest Payment' or transaction.Asset_type == 'CFD':
             # warning(f'{transaction.Type} is yet to be implemented')
             return None  # TODO
 
@@ -165,13 +164,6 @@ class EtoroImport:
             context=[transaction, position]
         )
 
-        total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
-        validate(
-            condition=position.Rollover_Fees_and_Dividends == total_dividends,
-            error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
-            context=position
-        )
-
         other_partial_amounts = self.__get_all_other_partial_trade_positions(position)['Amount'].sum()
 
         return OutputRow(
@@ -208,21 +200,6 @@ class EtoroImport:
             context=transaction
         )
 
-        total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
-        validate(
-            condition=position.Rollover_Fees_and_Dividends == total_dividends,
-            error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
-            context=position
-        )
-
-        validate(
-            condition=self.__check_partial_positions_consistency(position),
-            error=f"Please use a source file with transaction data starting at least on {position.Open_Date.date()} "
-                  f"in order to include the opening trade for position '{position.Index}'. If this is a partial "
-                  f"position, this is required to calculate the opening price correctly.",
-            context=position
-        )
-
         return OutputRow(
             TimestampUTC=transaction.Date,
             Type=OutputType.Sell,
@@ -241,7 +218,7 @@ class EtoroImport:
 
     def __parse_stock_split(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
         validate(
-            condition=transaction.Amount == 0 and transaction.Units != transaction.Units
+            condition=transaction.Amount == 0 and is_nan(transaction.Units)
                       and transaction.Realized_Equity_Change == 0 and transaction.Balance == 0,
             error="Stock split transaction is consistent with expectations.",
             context=transaction
@@ -269,12 +246,11 @@ class EtoroImport:
             context=transaction
         )
 
-        if self.__split_warning:
-            warning(
-                "Stock splits will be categorized as 'chain-split' in cryptotaxcalculator.io. In order for this"
-                " to work correctly, you have to ignore the 'missing market price' warnings for those transactions."
-            )
-            self.__split_warning = False
+        show_warning_once(
+            group="Stock Splits",
+            message="I have categorized stock splits as 'Chain Split' in cryptotaxcalculator.io.\nIn order for this"
+                    " to work correctly, you have to ignore the 'missing market price' warnings for those transactions."
+        )
 
         return OutputRow(
             TimestampUTC=transaction.Date,
@@ -297,6 +273,58 @@ class EtoroImport:
             BaseCurrency=ticker,
 
         )
+
+    def __parse_dividend(self, transaction: TransactionRow) -> OutputRow:
+        # The 'Dividends' tab contains one additional information, which is the "Withholding Tax Rate",
+        # but I'm not sure what to do with it, so I just ignore it along with the whole 'Dividends' sheet.
+
+        validate(
+            condition=is_nan(transaction.Units),
+            error="Dividend transaction is consistent.",
+            context=transaction
+        )
+
+        show_warning_once(
+            group='Dividends',
+            message="I have categorized dividends as 'Fiat Deposit' in cryptotaxcalculator.io, so they correctly "
+                    "contribute to your cash balance.\nThey are ignored from tax calculations, as they are taxed "
+                    "separately by HMRC, and this cannot be computed by cryptotaxcalculator.io.\nIf you want to check "
+                    "your total GBP balance from dividends, you could temporarily categorize all deposits from the "
+                    "'Dividends' source as 'Realized Profit'."
+        )
+
+        return OutputRow(
+            TimestampUTC=transaction.Date,
+            Type=OutputType.FiatDeposit,
+            BaseCurrency=self.__base_fiat,
+            BaseAmount=transaction.Amount,
+            From=Exchange.Dividends,
+            To=Exchange.Etoro,
+            ID=self.__make_id(transaction.Position_ID),
+            Description=f'{Exchange.Etoro} {transaction.Type}: {transaction.Details}'
+        )
+
+    def __validate_positions(self):
+        position: PositionRow
+        for position in self.__positions.itertuples():
+            total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
+            validate(
+                condition=position.Type == 'CFD' or position.Rollover_Fees_and_Dividends == total_dividends,
+                error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
+                context=position
+            )
+            validate(
+                condition=position.Type == 'CFD' or position.Leverage == 1,
+                error="Only CFDs can be leveraged.",
+                context=position
+            )
+            validate(
+                condition=self.__check_partial_positions_consistency(position),
+                error=f"Please use a source file with transaction data starting on {position.Open_Date.date()} "
+                      f"or earlier in order to include the opening trade for position '{position.Index}'. "
+                      "If this is a partial position, this is required to calculate the opening price correctly.",
+                context=position
+            )
 
     def __check_partial_positions_consistency(self, position: PositionRow) -> bool:
         # [2] This check is done to prevent issues with situation described in "[1]". It should ensure consistency.
@@ -332,5 +360,5 @@ class EtoroImport:
     @staticmethod
     def __parse_ticker(ticker: str, asset_type: str) -> str:
         return parse_ticker(
-            ticker, translate_tickers_etoro, TickerSuffix.Empty if asset_type == 'Crypto' else TickerSuffix.Stock
+            ticker, Exchange.Etoro, TickerSuffix.Empty if asset_type == 'Crypto' else TickerSuffix.Stock
         )
