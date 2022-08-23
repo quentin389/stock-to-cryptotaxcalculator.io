@@ -95,20 +95,22 @@ class EtoroImport:
                 return self.__parse_interest_payment(transaction)
 
         if position is not None and transaction.Asset_type != 'CFD':
-            # TODO
-            # if transaction.Type == 'Open Position':
-            #     return self.__parse_open_position(transaction, position)
-            # if transaction.Type == 'Position closed':
-            #     return self.__parse_close_position(transaction, position)
-            # if transaction.Type == 'corp action: Split':
-            #     return self.__parse_stock_split(transaction, position)
+            if transaction.Type == 'Open Position':
+                return self.__parse_open_position(transaction, position)
+            if transaction.Type == 'Position closed':
+                return self.__parse_close_position(transaction, position)
+            if transaction.Type == 'corp action: Split':
+                return self.__parse_stock_split(transaction, position)
             if transaction.Type == 'Dividend':
                 return self.__parse_dividend(transaction)
-            return None  # TODO
 
-        if transaction.Asset_type == 'CFD':
-            # warning(f'{transaction.Type} is yet to be implemented')
-            return None  # TODO
+        if position is not None and transaction.Asset_type == 'CFD':
+            if transaction.Type == 'Open Position':
+                return self.__parse_cfd_open_position(transaction)
+            if transaction.Type == 'Rollover Fee':
+                return self.__parse_cfd_rollover_fee(transaction, position)
+            if transaction.Type == 'Position closed':
+                return self.__parse_cfd_close_position(transaction, position)
 
         raise Exception(
             f"Row {str(transaction.Index)} of type '{transaction.Type}' cannot be parsed."
@@ -135,7 +137,7 @@ class EtoroImport:
             # only currency I parse (this is validated in self.__pre_validate). So, I can skip the conversion, which
             # is not even recorded in the eToro file, and use transaction.Amount as the USD amount.
             BaseCurrency=self.__base_fiat,
-            BaseAmount=transaction.Amount if is_deposit else -transaction.Amount,
+            BaseAmount=abs(transaction.Amount),
 
             # Fiat transactions do not have IDs on eToro
             ID='',
@@ -330,6 +332,79 @@ class EtoroImport:
             Description=f'{Exchange.Etoro} {transaction.Type}: {transaction.Details}'
         )
 
+    @staticmethod
+    def __parse_cfd_open_position(transaction: TransactionRow) -> None:
+        validate(
+            condition=transaction.Realized_Equity_Change == 0,
+            error="CFD Open Transactions with opening Realized Equity Change are not supported at this time.",
+            context=transaction
+        )
+
+        # Since CFDs are taxed only by profits and losses, without any additional rules, the open trade does
+        # not matter, and even couldn't be correctly entered into cryptotaxcalculator.io. Also, since we validate
+        # realized equity change above, we probably don't have to care about any initial fees.
+        return None
+
+    def __parse_cfd_rollover_fee(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
+        validate(
+            condition=transaction.Amount == transaction.Realized_Equity_Change and transaction.Amount < 0
+                      and is_nan(transaction.Units),
+            error="CFD rollover fee transaction has unexpected values.",
+            context=transaction
+        )
+
+        return OutputRow(
+            Type=OutputType.RealizedLoss,
+            BaseCurrency=self.__base_fiat,
+            BaseAmount=transaction.Amount,
+            From=Exchange.Etoro,
+            To=Exchange.CFDs,
+            ID=self.__make_id(transaction.Position_ID),
+            Description=f'{Exchange.Etoro} {transaction.Asset_type} {transaction.Details} for: '
+                        + self.__get_original_cfd_position_info(position),
+
+            # It is not clear to me whether CFDs should be taxed all at the point of closing transaction,
+            # or at the point of expense occurring. The latter makes more sense, so I just parse every transaction
+            # separately.
+            TimestampUTC=transaction.Date
+        )
+
+    def __parse_cfd_close_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
+        validate(
+            condition=transaction.Amount == position.Profit,
+            error="CFD closing transaction is not consistent with position entry.",
+            context=[transaction, position]
+        )
+        validate(
+            condition=transaction.Amount == transaction.Realized_Equity_Change,
+            error="CFD closing position is inconsistent.",
+            context=transaction
+        )
+
+        is_profit = transaction.Amount > 0
+        return OutputRow(
+            TimestampUTC=transaction.Date,
+            Type=OutputType.RealizedProfit if is_profit else OutputType.RealizedLoss,
+            ID=self.__make_id(transaction.Position_ID),
+            Description=f'{Exchange.Etoro} {transaction.Asset_type} {transaction.Type} for: '
+                        + self.__get_original_cfd_position_info(position),
+
+            # Perhaps somewhat more detailed information about CFDs would be useful, for example with asset name
+            # as a "currency" as with stock, instead of just cramming it into description and pretending the currency
+            # is just USD. Especially that it shows in a slightly confusing way in the final report that way.
+            # However, this "advanced manual CSV" import does not accept field combinations with "realized-profit" and
+            # "realized-loss" transactions that would allow this to be exported to cryptotaxcalculator.io.
+            # So, in the end, just a simple dollar amount seems like the best option. And it's relatively compatible
+            # with what HMRC requires.
+            BaseCurrency=self.__base_fiat,
+            BaseAmount=abs(transaction.Amount),
+
+            # Another weird thing with this transaction type. This is required for fiat amounts to be counted
+            # correctly at exchange, even though both transaction types are disposals.
+            From=Exchange.CFDs if is_profit else Exchange.Etoro,
+            To=Exchange.Etoro if is_profit else Exchange.CFDs
+        )
+
     def __validate_positions(self):
         position: PositionRow
         for position in self.__positions.itertuples():
@@ -388,3 +463,8 @@ class EtoroImport:
         return parse_ticker(
             ticker, Exchange.Etoro, TickerSuffix.Empty if asset_type == 'Crypto' else TickerSuffix.Stock
         )
+
+    @staticmethod
+    def __get_original_cfd_position_info(position) -> str:
+        leverage = 'without leverage' if position.Leverage == 1 else f'with {position.Leverage}x leverage'
+        return f'{position.Action} on {position.Open_Date} {leverage}'

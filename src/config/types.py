@@ -19,8 +19,9 @@ class Exchange(str, Enum):
     Etoro = 'eToro'
     Bank = 'Bank'
 
-    # This is a special source for easy identification and filtering of dividends income.
+    # Special sources for easy identification and filtering of special income types.
     Dividends = 'Dividends'
+    CFDs = 'CFDs'
 
 
 class OutputType(str, Enum):
@@ -30,6 +31,8 @@ class OutputType(str, Enum):
     Sell = 'sell'
     ChainSplit = 'chain-split'
     Interest = 'interest'
+    RealizedProfit = 'realized-profit'
+    RealizedLoss = 'realized-loss'
 
 
 # noinspection PyMethodParameters
