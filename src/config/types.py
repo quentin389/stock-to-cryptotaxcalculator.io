@@ -29,6 +29,7 @@ class OutputType(str, Enum):
     Buy = 'buy'
     Sell = 'sell'
     ChainSplit = 'chain-split'
+    Interest = 'interest'
 
 
 # noinspection PyMethodParameters

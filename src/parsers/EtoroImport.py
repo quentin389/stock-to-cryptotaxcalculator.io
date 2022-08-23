@@ -91,6 +91,8 @@ class EtoroImport:
                 return self.__parse_deposit_or_withdrawal(transaction, is_deposit=True)
             if transaction.Type == 'Withdraw Request':
                 return self.__parse_deposit_or_withdrawal(transaction, is_deposit=False)
+            if transaction.Type == 'Interest Payment':
+                return self.__parse_interest_payment(transaction)
 
         if position is not None and transaction.Asset_type != 'CFD':
             # TODO
@@ -104,7 +106,7 @@ class EtoroImport:
                 return self.__parse_dividend(transaction)
             return None  # TODO
 
-        if transaction.Type == 'Interest Payment' or transaction.Asset_type == 'CFD':
+        if transaction.Asset_type == 'CFD':
             # warning(f'{transaction.Type} is yet to be implemented')
             return None  # TODO
 
@@ -114,17 +116,7 @@ class EtoroImport:
         )
 
     def __parse_deposit_or_withdrawal(self, transaction: TransactionRow, is_deposit: bool) -> OutputRow:
-        operation_name = "Deposit" if is_deposit else "Withdrawal"
-        validate(
-            condition=transaction.Amount == transaction.Realized_Equity_Change,
-            error=f'{operation_name} amount inconsistent.',
-            context=transaction
-        )
-        validate(
-            condition=transaction.Position_ID == '' and transaction.Asset_type == '',
-            error=f'{operation_name} cannot have Position ID or Asset type.',
-            context=transaction
-        )
+        self.__validate_fiat_transaction(transaction, "Deposit" if is_deposit else "Withdrawal")
 
         return OutputRow(
             Type=OutputType.FiatDeposit if is_deposit else OutputType.FiatWithdrawal,
@@ -145,8 +137,42 @@ class EtoroImport:
             BaseCurrency=self.__base_fiat,
             BaseAmount=transaction.Amount if is_deposit else -transaction.Amount,
 
-            # Deposits and withdrawals do not have IDs on eToro
+            # Fiat transactions do not have IDs on eToro
             ID='',
+        )
+
+    def __parse_interest_payment(self, transaction: TransactionRow) -> OutputRow:
+        self.__validate_fiat_transaction(transaction, 'Interest Payment')
+        validate(
+            condition=transaction.Details == '' and is_nan(transaction.Units),
+            error=f"Interest Payment has unexpected data.",
+            context=transaction
+        )
+
+        return OutputRow(
+            TimestampUTC=transaction.Date,
+            Type=OutputType.Interest,
+            BaseCurrency=self.__base_fiat,
+            BaseAmount=transaction.Amount,
+            From=Exchange.Etoro,
+            To=Exchange.Etoro,
+            Description=f'{Exchange.Etoro} {transaction.Type}',
+
+            # Fiat transactions do not have IDs on eToro
+            ID='',
+        )
+
+    @staticmethod
+    def __validate_fiat_transaction(transaction: TransactionRow, operation_name: str) -> None:
+        validate(
+            condition=transaction.Amount == transaction.Realized_Equity_Change,
+            error=f'{operation_name} amount inconsistent.',
+            context=transaction
+        )
+        validate(
+            condition=transaction.Position_ID == '' and transaction.Asset_type == '',
+            error=f'{operation_name} cannot have Position ID or Asset type.',
+            context=transaction
         )
 
     def __parse_open_position(self, transaction: TransactionRow, position: PositionRow) -> OutputRow:
@@ -155,12 +181,12 @@ class EtoroImport:
             # I found a case where a transaction date and position date differed by 1 second. ...
             condition=date_time.almost_identical(transaction.Date, position.Open_Date, offset_sec=1)
                       and transaction.Amount == position.Amount,
-            error="Data is consistent between Transaction and Position.",
+            error="Open position data is not consistent between Transaction and Position.",
             context=[transaction, position]
         )
         validate(
             condition=transaction.Realized_Equity_Change == 0,
-            error="Stock-like asset Open Transactions do not change Realized Equity.",
+            error="Stock-like asset Open Transactions cannot change Realized Equity.",
             context=[transaction, position]
         )
 
@@ -191,12 +217,12 @@ class EtoroImport:
         validate(
             condition=date_time.almost_identical(transaction.Date, position.Close_Date, offset_sec=1)
                       and transaction.Amount == position.Profit,
-            error="Data is consistent between Transaction and Position.",
+            error="Data is not consistent between Transaction and Position.",
             context=[transaction, position]
         )
         validate(
             condition=transaction.Amount == transaction.Realized_Equity_Change,
-            error="Transaction close amount is equal to equity change.",
+            error="Transaction close amount is not equal to equity change.",
             context=transaction
         )
 
@@ -220,7 +246,7 @@ class EtoroImport:
         validate(
             condition=transaction.Amount == 0 and is_nan(transaction.Units)
                       and transaction.Realized_Equity_Change == 0 and transaction.Balance == 0,
-            error="Stock split transaction is consistent with expectations.",
+            error="Unexpected data in stock split transaction.",
             context=transaction
         )
 
@@ -280,7 +306,7 @@ class EtoroImport:
 
         validate(
             condition=is_nan(transaction.Units),
-            error="Dividend transaction is consistent.",
+            error="Dividend cannot have units.",
             context=transaction
         )
 
@@ -310,7 +336,7 @@ class EtoroImport:
             total_dividends = self.__get_transactions_of_type(position.Index, 'Dividend')['Amount'].sum()
             validate(
                 condition=position.Type == 'CFD' or position.Rollover_Fees_and_Dividends == total_dividends,
-                error="Stock-like assets have no rollover fees and should have consistent information about dividends.",
+                error="Stock-like assets should have no rollover fees and consistent information about dividends.",
                 context=position
             )
             validate(
