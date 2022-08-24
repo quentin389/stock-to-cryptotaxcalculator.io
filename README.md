@@ -25,7 +25,8 @@ taxes without consulting your accountant or making SURE you know the tax code.
 ## Available Conversions
 
 This parser accepts the following formats:
-* eToro xls format: `etoro-account-statement-*.xlsx` files
+* eToro xls format: `etoro-account-statement-*.xlsx` files. This source file has to
+  be generated using the "xls" button on eToro "Account statement" page.
 
 and that's it
 

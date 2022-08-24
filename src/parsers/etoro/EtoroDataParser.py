@@ -5,31 +5,27 @@ import pandas
 from pydantic import validate_arguments
 
 from helpers import data_frames, date_time
-from helpers.csv import save_output
 from config.types import OutputRow, OutputType, Exchange, TickerSuffix
 from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, show_warning_once
-from parsers.etoro_types import TransactionRow, PositionRow
+from parsers.AbstractDataParser import AbstractDataParser
+from parsers.etoro.types import TransactionRow, PositionRow
 
 
-class EtoroImport:
+class EtoroDataParser(AbstractDataParser):
     # I only allow USD as the base fiat currency, as this is the only file example I had.
     __base_fiat = 'USD'
 
     # I don't know if other formats are possible in the source file. This is the one that I have.
     __date_format = '%d/%m/%Y %H:%M:%S'
 
-    def __init__(self, source: str, target: str):
-        self.__source = source
-        self.__target = target
-
     def run(self):
         self.__pre_validate()
         data = self.__parse()
-        save_output(self.__target, data)
+        self._save_output(data)
 
     def __pre_validate(self):
-        account_summary = pandas.read_excel(io=self.__source, sheet_name="Account Summary", header=1, index_col=0)
+        account_summary = pandas.read_excel(io=self._get_source(), sheet_name="Account Summary", header=1, index_col=0)
         validate(
             condition=account_summary.loc['Currency']['Totals'] == self.__base_fiat,
             error=f"Only {self.__base_fiat} accounts are supported. I didn't have any other examples.",
@@ -38,14 +34,14 @@ class EtoroImport:
 
     def __parse(self) -> list[OutputRow]:
         self.__transactions = pandas.read_excel(
-            io=self.__source, sheet_name="Account Activity", na_values="-", keep_default_na=False,
+            io=self._get_source(), sheet_name="Account Activity", na_values="-", keep_default_na=False,
             converters={'Details': lambda x: '' if x == '-' else x}
         )
         data_frames.remove_column_spaces(self.__transactions)
         data_frames.parse_date(self.__transactions, 'Date', self.__date_format)
 
         self.__positions = pandas.read_excel(
-            io=self.__source, sheet_name="Closed Positions", index_col="Position ID", keep_default_na=False
+            io=self._get_source(), sheet_name="Closed Positions", index_col="Position ID", keep_default_na=False
         )
         data_frames.remove_column_spaces(self.__positions)
         data_frames.parse_date(self.__positions, 'Open_Date', self.__date_format)
