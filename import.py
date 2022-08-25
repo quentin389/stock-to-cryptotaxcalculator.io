@@ -7,7 +7,7 @@ argument_parser = argparse.ArgumentParser("import.py")
 argument_parser.add_argument(
     'parser',
     help='The parser to user.',
-    choices=['etoro']
+    choices=['etoro', 'ibkr']
 )
 argument_parser.add_argument(
     'source',
@@ -28,6 +28,9 @@ data_parser: AbstractDataParser
 if arguments.parser == 'etoro':
     from parsers.etoro.EtoroDataParser import EtoroDataParser
     data_parser = EtoroDataParser(arguments.source, arguments.target)
+elif arguments.parser == 'ibkr':
+    from parsers.ibkr.IbkrDataParser import IbkrDataParser
+    data_parser = IbkrDataParser(arguments.source, arguments.target)
 else:
     raise Exception("incorrect parser.")
 

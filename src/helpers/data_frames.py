@@ -1,6 +1,6 @@
 from typing import Optional, Any
 
-from pandas import DataFrame, to_datetime
+from pandas import DataFrame, to_datetime, option_context
 
 
 def remove_column_spaces(data_frame: DataFrame, replace_with: str = '_') -> None:
@@ -28,3 +28,8 @@ def get_one_by_key(data_frame: DataFrame, key: Any) -> Any:
         raise Exception("The values are not unique!")
     for row in data.itertuples():
         return row
+
+
+def wide_print(stuff_from_pandas) -> None:
+    with option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 0):
+        print(stuff_from_pandas)

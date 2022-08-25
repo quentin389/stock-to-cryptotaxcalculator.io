@@ -17,6 +17,7 @@ class TickerSuffix(str, Enum):
 
 class Exchange(str, Enum):
     Etoro = 'eToro'
+    Ibkr = 'Interactive Brokers'
     Bank = 'Bank'
 
     # Special sources for easy identification and filtering of special income types.
