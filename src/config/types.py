@@ -17,8 +17,10 @@ class TickerSuffix(str, Enum):
 
 class Exchange(str, Enum):
     Etoro = 'eToro'
-    Ibkr = 'Interactive Brokers'
     Bank = 'Bank'
+
+    # This is Interactive Brokers, but writing the full name does not make sense as it's shown as "Interactive b...".
+    Ibkr = 'IBKR'
 
     # Special sources for easy identification and filtering of special income types.
     Dividends = 'Dividends'
@@ -34,6 +36,7 @@ class OutputType(str, Enum):
     Interest = 'interest'
     RealizedProfit = 'realized-profit'
     RealizedLoss = 'realized-loss'
+    Fee = 'fee'
 
 
 # noinspection PyMethodParameters

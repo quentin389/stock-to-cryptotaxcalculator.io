@@ -9,3 +9,12 @@ class DepositsAndWithdrawalsRow(NamedTuple):
     Settle_Date: Timestamp
     Description: str
     Amount: float
+
+
+class FeesRow(NamedTuple):
+    Header: str
+    Subtitle: str
+    Currency: str
+    Date: Timestamp
+    Description: str
+    Amount: float
