@@ -37,13 +37,13 @@ class EtoroDataParser(AbstractDataParser):
             io=self._get_source(), sheet_name="Account Activity", na_values="-", keep_default_na=False,
             converters={'Details': lambda x: '' if x == '-' else x}
         )
-        data_frames.remove_column_spaces(self.__transactions)
+        data_frames.normalize_column_names(self.__transactions)
         data_frames.parse_date(self.__transactions, 'Date', self.__date_format)
 
         self.__positions = pandas.read_excel(
             io=self._get_source(), sheet_name="Closed Positions", index_col="Position ID", keep_default_na=False
         )
-        data_frames.remove_column_spaces(self.__positions)
+        data_frames.normalize_column_names(self.__positions)
         data_frames.parse_date(self.__positions, 'Open_Date', self.__date_format)
         data_frames.parse_date(self.__positions, 'Close_Date', self.__date_format)
         self.__validate_positions()

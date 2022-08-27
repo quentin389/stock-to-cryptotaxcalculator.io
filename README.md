@@ -22,6 +22,21 @@ This is done solely for my own needs, with file formats I had available at the t
 of the making, works only in the UK, and you should never do anything with your
 taxes without consulting your accountant or making SURE you know the tax code.
 
+## Correct file formats
+
+Please note that in many places I throw errors if the files being parsed are not
+**exactly** in the same format as the files I had as examples. That is because
+I can't predict or assume that some variation means something specific without
+analysing it. So it's better to say "stop, I don't know what is this" than allow
+a deviation and produce random output.
+
+This means that it's possible that almost any new file being parsed will throw
+an error.
+
+Also, keep in mind that cryptotaxcalculator.io format and rules also change,
+so even with source files in correct format, in time something may change and
+stop producing desired effects.
+
 ## Available Conversions
 
 This parser accepts the following formats:
