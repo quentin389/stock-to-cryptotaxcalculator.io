@@ -1,11 +1,11 @@
 import re
 
 from config.config import translate_tickers
-from config.types import TickerSuffix, Exchange
+from config.types import TickerAffix, Exchange
 from helpers.validation import show_warning_once
 
 
-def parse_ticker(ticker: str, exchange: Exchange, suffix: TickerSuffix) -> str:
+def parse_ticker(ticker: str, exchange: Exchange, suffix: TickerAffix) -> str:
     if ticker in translate_tickers[exchange]:
         ticker = translate_tickers[exchange][ticker]
     elif re.match(r'^[A-Z]+$', ticker) is None:

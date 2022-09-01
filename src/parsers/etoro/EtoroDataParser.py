@@ -5,7 +5,7 @@ import pandas
 from pydantic import validate_arguments
 
 from helpers import data_frames, date_time
-from config.types import OutputRow, OutputType, Exchange, TickerSuffix
+from config.types import OutputRow, OutputType, Exchange, TickerAffix
 from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, show_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
@@ -337,7 +337,7 @@ class EtoroDataParser(AbstractDataParser):
         )
 
         # Since CFDs are taxed only by profits and losses, without any additional rules, the open trade does
-        # not matter, and even couldn't be correctly entered into cryptotaxcalculator.io. Also, since we validate
+        # not matter, and couldn't even be correctly entered into cryptotaxcalculator.io. Also, since we validate
         # realized equity change above, we probably don't have to care about any initial fees.
         return None
 
@@ -457,7 +457,7 @@ class EtoroDataParser(AbstractDataParser):
     @staticmethod
     def __parse_ticker(ticker: str, asset_type: str) -> str:
         return parse_ticker(
-            ticker, Exchange.Etoro, TickerSuffix.Empty if asset_type == 'Crypto' else TickerSuffix.Stock
+            ticker, Exchange.Etoro, TickerAffix.Empty if asset_type == 'Crypto' else TickerAffix.Stock
         )
 
     @staticmethod

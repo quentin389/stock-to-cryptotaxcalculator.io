@@ -4,7 +4,8 @@ from pandas import DataFrame, to_datetime, option_context
 
 
 def normalize_column_names(data_frame: DataFrame, replace_with: str = '_') -> None:
-    data_frame.columns = data_frame.columns.str.replace(r'[ /\.]', replace_with, regex=True)
+    data_frame.columns = data_frame.columns.str.replace(r'[ /\.\(\)]', replace_with, regex=True)
+    data_frame.columns = data_frame.columns.str.replace('%', 'pct', regex=False)
 
 
 def remove_columns(data_frame: DataFrame, column: str) -> None:
