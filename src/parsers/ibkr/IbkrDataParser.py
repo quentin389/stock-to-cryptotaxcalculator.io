@@ -38,6 +38,7 @@ class IbkrDataParser(AbstractDataParser):
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
             # TODO: add parsing stock splits
             # TODO: add parsing transfers
+            # TODO: add parsing interest
         ]
 
     def __parse_account_information(self, data: DataFrame) -> None:
@@ -77,19 +78,31 @@ class IbkrDataParser(AbstractDataParser):
     def __parse_account_fees(self, data: DataFrame) -> list[OutputRow]:
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Date', self.__date_format)
+        fees_rows = data.loc[(data['Header'] == 'Data') & (data['Subtitle'] != 'Total')]
+
+        # It seems that, at least in my situation, each fee has a 20% tax that is not reported anywhere but
+        # in summaries. It's also not refunded if the fee itself is returned.
+        sales_tax_value = self.__get_sales_tax()
+        fees_taken_sum = fees_rows[fees_rows['Amount'] < 0]['Amount'].sum()
+        sales_tax = sales_tax_value / fees_taken_sum if sales_tax_value != 0 and fees_taken_sum != 0 else 0
 
         row: FeesRow
-        for row in data.loc[(data['Header'] == 'Data') & (data['Subtitle'] != 'Total')].itertuples():
+        for row in fees_rows.itertuples():
             validate(
                 condition=row.Subtitle == 'Other Fees',
                 error="Only 'Other Fees' with are implemented for 'Fees' table.",
+                context=row
+            )
+            validate(
+                condition=row.Currency == self.__base_currency,
+                error=f"Only fees in the base currency ({self.__base_currency}) are implemented.",
                 context=row
             )
 
             is_fee = row.Amount < 0
             yield OutputRow(
                 TimestampUTC=row.Date,
-                BaseCurrency=row.Currency,
+                BaseCurrency=self.__base_currency,
                 BaseAmount=abs(row.Amount),
                 From=Exchange.Ibkr,
                 To=Exchange.Ibkr,
@@ -100,6 +113,17 @@ class IbkrDataParser(AbstractDataParser):
                 # in order to make it a non-taxable event (I'm receiving back my money after all).
                 Type=OutputType.Fee if is_fee else OutputType.Buy,
             )
+
+            if is_fee and sales_tax != 0:
+                yield OutputRow(
+                    TimestampUTC=row.Date,
+                    Type=OutputType.Fee,
+                    BaseCurrency=self.__base_currency,
+                    BaseAmount=round(abs(row.Amount * sales_tax), 6),
+                    From=Exchange.Ibkr,
+                    To=Exchange.Ibkr,
+                    Description=f'{Exchange.Ibkr} {row.Subtitle} Sales Tax of {sales_tax * 100}%',
+                )
 
         return []
 
@@ -326,6 +350,27 @@ class IbkrDataParser(AbstractDataParser):
             QuoteAmount=(row.Proceeds + row.Comm_Fee),
             QuoteCurrency=row.Currency,
         )
+
+    def __get_sales_tax(self) -> float:
+        data = self.__tables['Change in NAV']
+        sales_tax_fields = data.loc[data['Field Name'] == 'Sales Tax']
+        if sales_tax_fields.shape[0] == 0:
+            return 0.0
+
+        validate(
+            condition=sales_tax_fields.shape[0] == 1,
+            error="I have no idea how to parse more than one Sales Tax field.",
+            context=sales_tax_fields
+        )
+
+        sales_tax_value = sales_tax_fields['Field Value'].iloc[0]
+        validate(
+            condition=sales_tax_value < 0,
+            error="Sales Tax should be number.",
+            context=sales_tax_fields
+        )
+
+        return sales_tax_value
 
     def __extract_all_tables(self) -> None:
         data = []
