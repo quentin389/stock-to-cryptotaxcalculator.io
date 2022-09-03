@@ -225,13 +225,27 @@ class IbkrDataParser(AbstractDataParser):
                 BaseAmount=base_amount,
                 QuoteCurrency=quote_currency,
                 QuoteAmount=abs(quote_amount),
-                FeeCurrency=self.__base_currency,
-                FeeAmount=abs(row.Comm_in_Base_Currency),
                 From=Exchange.Ibkr,
                 To=Exchange.Ibkr,
                 Description=f'{Exchange.Ibkr} Forex Trade: '
                             f'from {quote_currency} to {base_currency}{self.__code__values_to_string(row.Code)}'
             )
+
+            # To prevent weird "Fee Forwarding" in cryptotaxcalculator.io that results in incorrect base currency
+            # total values, the forex fees are added as a separate transaction. This is probably the correct way of
+            # treating it anyway, as the those fees are always in the base currency, so they aren't really a part
+            # of the main transaction.
+            if row.Comm_in_Base_Currency != 0:
+                yield OutputRow(
+                    TimestampUTC=row.Date_Time,
+                    Type=OutputType.Fee,
+                    BaseCurrency=self.__base_currency,
+                    BaseAmount=abs(row.Comm_in_Base_Currency),
+                    From=Exchange.Ibkr,
+                    To=Exchange.Ibkr,
+                    Description=f'{Exchange.Ibkr} Forex Trade Fee: '
+                                f'from {quote_currency} to {base_currency}{self.__code__values_to_string(row.Code)}'
+                )
 
         return []
 
