@@ -5,11 +5,12 @@ from typing import Iterator
 import pandas
 from pandas import DataFrame
 
-from config.types import OutputRow, OutputType, Exchange, TickerAffix
+from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers import data_frames
+from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, is_currency, show_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
-from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, Codes, OptionsRow
+from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, Codes, StocksAndDerivativesTradesRow
 
 
 class IbkrDataParser(AbstractDataParser):
@@ -35,6 +36,8 @@ class IbkrDataParser(AbstractDataParser):
               if 'Deposits & Withdrawals' in self.__tables else []),
             *(self.__parse_account_fees(self.__tables['Fees']) if 'Fees' in self.__tables else []),
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
+            # TODO: add parsing stock splits
+            # TODO: add parsing transfers
         ]
 
     def __parse_account_information(self, data: DataFrame) -> None:
@@ -125,15 +128,16 @@ class IbkrDataParser(AbstractDataParser):
             data_frames.normalize_column_names(table)
 
             data_frames.parse_date(table, 'Date_Time', self.__datetime_format, self.__timezone)
+            table = table.sort_values('Date_Time')
             table['Code'] = table['Code'].apply(
                 lambda code: [] if is_nan(code) or code == ' ' else self.__strings_to_codes(code.split(';'))
             )
 
             if asset_category == 'Stocks':
-                # TODO
-                pass
+                for result in self.__parse_stocks_and_derivatives(table, AssetType.Stock):
+                    yield result
             elif asset_category == 'Equity and Index Options':
-                for result in self.__parse_options(table):
+                for result in self.__parse_stocks_and_derivatives(table, AssetType.Option):
                     yield result
             elif asset_category == 'Forex':
                 for result in self.__parse_forex_trades(table):
@@ -207,56 +211,60 @@ class IbkrDataParser(AbstractDataParser):
 
         return []
 
-    def __parse_options(self, data: DataFrame) -> list[OutputRow]:
-        # Please note that the rules below only implement options buying. Writing options is not implemented.
-        # On the buy side, the only implemented transactions are: sell and lapse.
+    def __parse_stocks_and_derivatives(self, data: DataFrame, asset_type: AssetType) -> list[OutputRow]:
+        # Note for Options:
+        # The rules below only implement options buying. Writing options is not implemented.
+        # On the buy side, the only implemented transactions are 'sell' (close position) and 'lapse' (expire).
         # See https://www.gov.uk/hmrc-internal-manuals/capital-gains-manual/cg55536 for reference.
 
-        row: OptionsRow
+        row: StocksAndDerivativesTradesRow
         for row in data.loc[(data['Header'] == 'Data')].itertuples():
             validate(
                 condition=row.DataDiscriminator == 'Order',
-                error="Options Trade fields should be consistent.",
+                error=f"{asset_type} Trade fields should be consistent.",
+                context=row
+            )
+            validate(
+                condition=round(abs(row.Basis), 4) == round(abs(row.Proceeds - row.Realized_P_L + row.Comm_Fee), 4),
+                error=f"{asset_type} Trade should have its Basis consistent with other fields.",
                 context=row
             )
 
             if Codes.O in row.Code:
-                yield self.__parse_option_opening_trade(row)
+                yield self.__parse_stock_or_derivative_opening_trade(row, asset_type)
             elif Codes.C in row.Code:
-                yield self.__parse_option_closing_trade(row)
+                yield self.__parse_stock_or_derivative_closing_trade(row, asset_type)
             else:
                 validate(
                     condition=False,
-                    error="Only opening and closing Option Trades are allowed.",
+                    error=f"Only opening and closing {asset_type} Trades are allowed.",
                     context=row
                 )
 
         return []
 
-    def __parse_option_opening_trade(self, row: OptionsRow) -> OutputRow:
-        self.__validate_allowed_codes(row.Code, [Codes.O], 'Option Opening Trades')
+    def __parse_stock_or_derivative_opening_trade(
+            self, row: StocksAndDerivativesTradesRow, asset_type: AssetType
+    ) -> OutputRow:
+        self.__validate_allowed_codes(row.Code, [Codes.O, Codes.P, Codes.FPA], f'{asset_type} Opening Trades')
         validate(
             condition=row.Realized_P_L == 0 and row.Realized_P_L_pct == 0,
-            error="Option Opening Trade cannot have Realized Profit",
+            error=f"{asset_type} Opening Trade cannot have Realized Profit",
             context=row
         )
         # noinspection PyChainedComparisons
         validate(
-            condition=row.Quantity > 0 and row.Proceeds < 0 and row.Comm_Fee <= 0,
-            error="Option Opening Trade has to have values set with expected signs.",
-            context=row
-        )
-        validate(
-            condition=-row.Basis == row.Proceeds + row.Comm_Fee,
-            error="Option Opening Trade should have its Basis consistent with other fields.",
+            condition=row.Quantity > 0 and row.Proceeds < 0 and row.Comm_Fee <= 0 and row.Basis > 0,
+            error=f"{asset_type} Opening Trade has to have values set with expected signs.",
             context=row
         )
 
+        # Note for Options:
         # Bought option 'sell' and 'expiry' can be both modeled (somewhat?) accurately if we pretend they are stock.
         return OutputRow(
             TimestampUTC=row.Date_Time,
             Type=OutputType.Buy,
-            BaseCurrency=self.__get_option_ticker(row.Symbol),
+            BaseCurrency=self.__parse_ticker(row.Symbol, asset_type),
             BaseAmount=row.Quantity,
             QuoteCurrency=row.Currency,
             QuoteAmount=abs(row.Proceeds),
@@ -264,54 +272,54 @@ class IbkrDataParser(AbstractDataParser):
             FeeAmount=abs(row.Comm_Fee),
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
-            Description=f'{Exchange.Ibkr} Option Trade{self.__code__values_to_string(row.Code)}',
+            Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
         )
 
-    def __parse_option_closing_trade(self, row: OptionsRow) -> OutputRow:
-        print(row)
-
-        self.__validate_allowed_codes(row.Code, [Codes.C, Codes.P, Codes.Ep], 'Option Opening Trades')
-        validate(
-            condition=round(abs(row.Basis), 4) == round(row.Proceeds - row.Realized_P_L + row.Comm_Fee, 4),
-            error="Option Closing Trade should have its Basis consistent with other fields.",
-            context=row
-        )
+    def __parse_stock_or_derivative_closing_trade(
+            self, row: StocksAndDerivativesTradesRow, asset_type: AssetType
+    ) -> OutputRow:
+        self.__validate_allowed_codes(row.Code, [Codes.C, Codes.P, Codes.Ep, Codes.FPA], f'{asset_type} Closing Trades')
 
         if Codes.Ep in row.Code:  # expired option
+            validate(
+                condition=asset_type == AssetType.Option,
+                error="Only Option can be expired.",
+                context=row
+            )
+            validate(
+                condition=row.Quantity < 0 and row.Proceeds == 0 and row.Comm_Fee == 0 and row.Basis < 0,
+                error="Option Lapse has to have correct values.",
+                context=row
+            )
             show_warning_once(
                 group="Option Lapse",
                 message="Lapsed (expired) options are implemented as a sale with value 0.\nThis means that "
                         "cryptotaxcalculator.io thinks that the position value is 0 and will show "
                         "a 'missing market price' warning.\nThose warnings should be dismissed."
             )
-            validate(
-                condition=row.Quantity < 0 and row.Proceeds == 0 and row.Comm_Fee == 0,
-                error="Option Lapse has to have correct values.",
-                context=row
-            )
-        else:  # sold option
+        else:  # stock or option position close
             # noinspection PyChainedComparisons
             validate(
-                condition=row.Quantity < 0 and row.Proceeds > 0 and row.Comm_Fee <= 0,
-                error="Option Closing Trade has to have values set with expected signs.",
+                condition=row.Quantity < 0 and row.Proceeds > 0 and row.Comm_Fee <= 0 and row.Basis < 0,
+                error=f"{asset_type} Closing Trade has to have values set with expected signs.",
                 context=row
             )
             validate(
                 condition=row.Proceeds + row.Comm_Fee > 0,
-                error="Selling an Option for less than the fee is not implemented.",
+                error=f"Selling {asset_type} for less than the fee is not implemented.",
                 context=row
             )
 
         return OutputRow(
             TimestampUTC=row.Date_Time,
             Type=OutputType.Sell,
-            BaseCurrency=self.__get_option_ticker(row.Symbol),
+            BaseCurrency=self.__parse_ticker(row.Symbol, asset_type),
             BaseAmount=abs(row.Quantity),
             FeeCurrency=row.Currency,
             FeeAmount=abs(row.Comm_Fee),
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
-            Description=f'{Exchange.Ibkr} Option Trade{self.__code__values_to_string(row.Code)}',
+            Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
 
             # The opening trade FeeAmount is not included in QuoteAmount in cryptotaxcalculator.io import,
             # but the closing trade FeeAmount is. So we have to set the QuoteAmount to a sum of those values.
@@ -401,7 +409,7 @@ class IbkrDataParser(AbstractDataParser):
         return f" ({', '.join(important_codes)})"
 
     @staticmethod
-    def __get_option_ticker(symbol: str) -> str:
-        # Note that this only works if the only source of options is IBKR. Otherwise, I may need to normalize the
-        # option position name, so options from different exchanges can be pooled together.
-        return TickerAffix.Option + symbol
+    def __parse_ticker(ticker: str, asset_type: AssetType) -> str:
+        # Note that just passing the option name works only if the only source of options is IBKR. Otherwise, I may
+        # need to normalize the option position names, so options from different exchanges can be pooled together.
+        return parse_ticker(ticker, Exchange.Ibkr, asset_type)

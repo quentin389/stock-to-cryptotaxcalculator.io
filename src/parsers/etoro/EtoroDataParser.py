@@ -5,7 +5,7 @@ import pandas
 from pydantic import validate_arguments
 
 from helpers import data_frames, date_time
-from config.types import OutputRow, OutputType, Exchange, TickerAffix
+from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, show_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
@@ -456,9 +456,7 @@ class EtoroDataParser(AbstractDataParser):
 
     @staticmethod
     def __parse_ticker(ticker: str, asset_type: str) -> str:
-        return parse_ticker(
-            ticker, Exchange.Etoro, TickerAffix.Empty if asset_type == 'Crypto' else TickerAffix.Stock
-        )
+        return parse_ticker(ticker, Exchange.Etoro, AssetType.Crypto if asset_type == 'Crypto' else AssetType.Stock)
 
     @staticmethod
     def __get_original_cfd_position_info(position) -> str:

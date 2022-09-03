@@ -6,16 +6,10 @@ from pandas import Timestamp
 from pydantic import BaseModel, validator
 
 
-class TickerAffix(str, Enum):
-    Empty = ''
-
-    # There is no functional difference in computing taxes for stocks and some derivatives, like ETF, so for the sake
-    # of simplicity I just call of it stock. What's important is that the tickers get a name that will not conflict
-    # with crypto.
-    Stock = ':STOCK'
-
-    # Options can be treated as stock, so I prefix each option type in order for the names to be easily recognisable.
-    Option = 'OPT:'
+class AssetType(str, Enum):
+    Stock = 'Stock'
+    Option = 'Option'
+    Crypto = 'Crypto'
 
 
 class Exchange(str, Enum):

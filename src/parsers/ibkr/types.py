@@ -48,7 +48,7 @@ class ForexTradesRow(NamedTuple):
     Code: list[Codes]
 
 
-class OptionsRow(NamedTuple):
+class StocksAndDerivativesTradesRow(NamedTuple):
     Header: str
     DataDiscriminator: str
     Currency: str
