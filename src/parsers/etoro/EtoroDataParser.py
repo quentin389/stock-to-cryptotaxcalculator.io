@@ -7,7 +7,7 @@ from pydantic import validate_arguments
 from helpers import data_frames, date_time
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, show_warning_once
+from helpers.validation import validate, is_nan, show_warning_once, show_stock_split_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.etoro.types import TransactionRow, PositionRow
 
@@ -270,11 +270,7 @@ class EtoroDataParser(AbstractDataParser):
             context=transaction
         )
 
-        show_warning_once(
-            group="Stock Splits",
-            message="I have categorized stock splits as 'Chain Split' in cryptotaxcalculator.io.\nIn order for this"
-                    " to work correctly, you have to ignore the 'missing market price' warnings for those transactions."
-        )
+        show_stock_split_warning_once()
 
         return OutputRow(
             TimestampUTC=transaction.Date,

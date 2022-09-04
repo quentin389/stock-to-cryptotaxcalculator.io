@@ -23,4 +23,12 @@ def show_warning_once(group: str, message: str) -> None:
         show_warning_once.already_shown[group] = True
 
 
+def show_stock_split_warning_once() -> None:
+    show_warning_once(
+        group="Stock Splits",
+        message="I have categorized stock splits as 'Chain Split' in cryptotaxcalculator.io.\nIn order for this"
+                " to work correctly, you have to ignore the 'missing market price' warnings for those transactions."
+    )
+
+
 show_warning_once.already_shown = {}

@@ -8,9 +8,10 @@ from pandas import DataFrame
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, is_currency, show_warning_once
+from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
-from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, Codes, StocksAndDerivativesTradesRow
+from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
+    CorporateActionsRow, Codes
 
 
 class IbkrDataParser(AbstractDataParser):
@@ -23,7 +24,6 @@ class IbkrDataParser(AbstractDataParser):
     __timezone = 'US/Eastern'
 
     def run(self) -> None:
-        # todo: any validations?
         self.__extract_all_tables()
         data = self.__parse()
         self._save_output(data)
@@ -36,9 +36,8 @@ class IbkrDataParser(AbstractDataParser):
               if 'Deposits & Withdrawals' in self.__tables else []),
             *(self.__parse_account_fees(self.__tables['Fees']) if 'Fees' in self.__tables else []),
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
-            # TODO: add parsing stock splits
-            # TODO: add parsing transfers
-            # TODO: add parsing interest
+            *(self.__parse_stock_splits(self.__tables['Corporate Actions'])
+              if 'Corporate Actions' in self.__tables else []),
         ]
 
     def __parse_account_information(self, data: DataFrame) -> None:
@@ -364,6 +363,49 @@ class IbkrDataParser(AbstractDataParser):
             QuoteAmount=(row.Proceeds + row.Comm_Fee),
             QuoteCurrency=row.Currency,
         )
+
+    def __parse_stock_splits(self, data: DataFrame) -> list[OutputRow]:
+        data_frames.normalize_column_names(data)
+        data_frames.parse_date(data, 'Date_Time', self.__datetime_format, self.__timezone)
+        data_frames.parse_date(data, 'Report_Date', self.__date_format, self.__timezone)
+
+        row: CorporateActionsRow
+        for row in data.loc[~data['Asset_Category'].str.startswith('Total')].itertuples():
+            validate(
+                condition=row.Asset_Category.startswith('Stocks '),
+                error="Only stock Corporate Actions are implemented.",
+                context=row
+            )
+            action_type = re.search(r'^(.*)\(.*?\) Split .*$', row.Description)
+            validate(
+                condition=action_type is not None and len(action_type.groups()) == 1,
+                error="The only Corporate Action implemented is stock split.",
+                context=row
+            )
+            validate(
+                condition=row.Quantity > 0 and row.Proceeds == 0 and row.Value == 0 and row.Realized_P_L == 0,
+                error="Corporate Action stock split has to have correct numeric fields values.",
+                context=row
+            )
+            validate(
+                condition=is_nan(row.Code),
+                error="No Codes are allowed for stock split Corporate Action.",
+                context=row
+            )
+
+            show_stock_split_warning_once()
+
+            yield OutputRow(
+                TimestampUTC=row.Date_Time,
+                Type=OutputType.ChainSplit,  # See EtoroDataParser stock split for explanation.
+                BaseCurrency=self.__parse_ticker(action_type.group(1), AssetType.Stock),
+                BaseAmount=row.Quantity,
+                From=Exchange.Ibkr,
+                To=Exchange.Ibkr,
+                Description=f'{Exchange.Ibkr} {row.Description}',
+            )
+
+        return []
 
     def __get_sales_tax(self) -> float:
         data = self.__tables['Change in NAV']

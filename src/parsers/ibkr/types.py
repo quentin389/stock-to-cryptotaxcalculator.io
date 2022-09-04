@@ -64,3 +64,17 @@ class StocksAndDerivativesTradesRow(NamedTuple):
     Realized_P_L_pct: float
     MTM_P_L: float
     Code: list[Codes]
+
+
+class CorporateActionsRow(NamedTuple):
+    Header: str
+    Asset_Category: str
+    Currency: str
+    Report_Date: Timestamp
+    Date_Time: Timestamp
+    Description: str
+    Quantity: float
+    Proceeds: float
+    Value: float
+    Realized_P_L: float
+    Code: list[Codes]
