@@ -78,3 +78,21 @@ class CorporateActionsRow(NamedTuple):
     Value: float
     Realized_P_L: float
     Code: list[Codes]
+
+
+class TransferRow(NamedTuple):
+    Header: str
+    Asset_Category: str
+    Currency: str
+    Symbol: str
+    Date: Timestamp
+    Type: str
+    Direction: str
+    Xfer_Company: str
+    Xfer_Account: str
+    Qty: float
+    Xfer_Price: float
+    Market_Value: float
+    Realized_P_L: float
+    Cash_Amount: float
+    Code: list[Codes]

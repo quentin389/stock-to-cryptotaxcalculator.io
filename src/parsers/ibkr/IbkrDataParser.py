@@ -11,7 +11,7 @@ from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
-    CorporateActionsRow, Codes
+    CorporateActionsRow, Codes, TransferRow
 
 
 class IbkrDataParser(AbstractDataParser):
@@ -38,6 +38,7 @@ class IbkrDataParser(AbstractDataParser):
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
             *(self.__parse_stock_splits(self.__tables['Corporate Actions'])
               if 'Corporate Actions' in self.__tables else []),
+            *(self.__parse_transfers(self.__tables['Transfers']) if 'Transfers' in self.__tables else []),
         ]
 
     def __parse_account_information(self, data: DataFrame) -> None:
@@ -403,6 +404,57 @@ class IbkrDataParser(AbstractDataParser):
                 From=Exchange.Ibkr,
                 To=Exchange.Ibkr,
                 Description=f'{Exchange.Ibkr} {row.Description}',
+            )
+
+        return []
+
+    def __parse_transfers(self, data: DataFrame) -> list[OutputRow]:
+        data_frames.normalize_column_names(data)
+        data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
+
+        show_warning_once(
+            group="Stock Transfers",
+            message="For stock transfers to be recognized correctly by cryptotaxcalculator.io the 'send' and 'receive' "
+                    "transactions need to be matched by several criteria.\nIt's important to match those transactions "
+                    "by manually adjusting them.\nOne important criterion is that they have to occur within one hour, "
+                    "which for stock transfers may not be the case."
+        )
+
+        row: TransferRow
+        for row in data.loc[~data['Asset_Category'].str.startswith('Total')].itertuples():
+            validate(
+                condition=row.Asset_Category.startswith('Stocks ') and row.Direction == 'In',
+                error="Only incoming stock Transfers are implemented.",
+                context=row
+            )
+            validate(
+                condition=row.Type == 'FOP' and is_nan(row.Xfer_Price),
+                error="Only FOP (Free Of Payment) Transfers are implemented.",
+                context=row
+            )
+            validate(
+                condition=row.Qty > 0 and row.Market_Value > 0 and row.Realized_P_L == 0 and row.Cash_Amount == 0,
+                error="Transfer numeric fields have to be correct.",
+                context=row
+            )
+            validate(
+                condition=is_nan(row.Code),
+                error="No Codes are allowed for Transfers.",
+                context=row
+            )
+
+            yield OutputRow(
+                TimestampUTC=row.Date,
+                Type=OutputType.Receive,
+                BaseCurrency=self.__parse_ticker(row.Symbol, AssetType.Stock),
+                BaseAmount=row.Qty,
+                # QuoteCurrency=row.Currency,
+                # QuoteAmount=row.Market_Value,
+                From=Exchange.Unknown,
+                To=Exchange.Ibkr,
+                Description=f'{Exchange.Ibkr} incoming stock transfer from: '
+                            f'{"unknown" if is_nan(row.Xfer_Company) else row.Xfer_Company} '
+                            f'/ {"unknown" if is_nan(row.Xfer_Account) else row.Xfer_Account}'
             )
 
         return []

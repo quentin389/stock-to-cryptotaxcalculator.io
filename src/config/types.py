@@ -23,6 +23,9 @@ class Exchange(str, Enum):
     Dividends = 'Dividends'
     CFDs = 'CFDs'
 
+    # This is a special exchange name to flag it in cryptotaxcalculator.io as this indicates missing name.
+    Unknown = 'Unknown'
+
 
 class OutputType(str, Enum):
     FiatDeposit = 'fiat-deposit'
@@ -34,6 +37,7 @@ class OutputType(str, Enum):
     RealizedProfit = 'realized-profit'
     RealizedLoss = 'realized-loss'
     Fee = 'fee'
+    Receive = 'receive'
 
 
 # noinspection PyMethodParameters
