@@ -7,7 +7,8 @@ from pydantic import validate_arguments
 from helpers import data_frames, date_time
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, show_warning_once, show_stock_split_warning_once
+from helpers.validation import validate, is_nan, show_warning_once, show_stock_split_warning_once, \
+    show_dividends_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.etoro.types import TransactionRow, PositionRow
 
@@ -304,14 +305,7 @@ class EtoroDataParser(AbstractDataParser):
             context=transaction
         )
 
-        show_warning_once(
-            group='Dividends',
-            message="I have categorized dividends as 'Fiat Deposit' in cryptotaxcalculator.io, so they correctly "
-                    "contribute to your cash balance.\nThey are ignored from tax calculations, as they are taxed "
-                    "separately by HMRC, and this cannot be computed by cryptotaxcalculator.io.\nIf you want to check "
-                    "your total GBP balance from dividends, you could temporarily categorize all deposits from the "
-                    "'Dividends' source as 'Realized Profit'."
-        )
+        show_dividends_warning_once()
 
         return OutputRow(
             TimestampUTC=transaction.Date,

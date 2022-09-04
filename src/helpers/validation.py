@@ -31,4 +31,15 @@ def show_stock_split_warning_once() -> None:
     )
 
 
+def show_dividends_warning_once() -> None:
+    show_warning_once(
+        group='Dividends',
+        message="I have categorized dividends as 'Fiat Deposit' in cryptotaxcalculator.io, so they correctly "
+                "contribute to your cash balance.\nThey are ignored from tax calculations, as they are taxed "
+                "separately by HMRC, and this cannot be computed by cryptotaxcalculator.io.\nIf you want to check "
+                "your total GBP balance from dividends, you could temporarily categorize all deposits from the "
+                "'Dividends' source as 'Realized Profit'."
+    )
+
+
 show_warning_once.already_shown = {}

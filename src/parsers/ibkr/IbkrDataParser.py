@@ -1,6 +1,6 @@
 import re
 from io import StringIO
-from typing import Iterator
+from typing import Iterator, Optional
 
 import pandas
 from pandas import DataFrame
@@ -8,10 +8,11 @@ from pandas import DataFrame
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once
+from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once, \
+    show_dividends_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
-    CorporateActionsRow, Codes, TransferRow, InterestRow
+    CorporateActionsRow, Codes, TransferRow, InterestRow, WithholdingTaxRow, DividendsRow
 
 
 class IbkrDataParser(AbstractDataParser):
@@ -37,6 +38,10 @@ class IbkrDataParser(AbstractDataParser):
             *(self.__parse_account_fees(self.__tables['Fees']) if 'Fees' in self.__tables else []),
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
             *(self.__parse_interest(self.__tables['Interest']) if 'Interest' in self.__tables else []),
+            *(self.__parse_dividends(
+                self.__tables['Dividends'],
+                self.__tables['Withholding Tax'] if 'Withholding Tax' in self.__tables else None
+            ) if 'Dividends' in self.__tables else []),
             *(self.__parse_stock_splits(self.__tables['Corporate Actions'])
               if 'Corporate Actions' in self.__tables else []),
             *(self.__parse_transfers(self.__tables['Transfers']) if 'Transfers' in self.__tables else []),
@@ -383,6 +388,57 @@ class IbkrDataParser(AbstractDataParser):
                 BaseCurrency=row.Currency,
                 BaseAmount=row.Amount,
                 From=Exchange.Ibkr,
+                To=Exchange.Ibkr,
+                Description=f'{Exchange.Ibkr} {row.Description}'
+            )
+
+        return []
+
+    def __parse_dividends(self, data: DataFrame, tax_data: Optional[DataFrame]) -> list[OutputRow]:
+        # Because of the dividends taxation rules, the withholding tax should not be a separate item to the dividend
+        # itself, so I'm subtracting the tax from the dividend base value
+        taxes = {}
+        if tax_data is not None:
+            tax_row: WithholdingTaxRow
+            for tax_row in tax_data.loc[~data['Currency'].str.startswith('Total')].itertuples():
+                action_type = re.search(r'^(.*)\(.*?\) Cash Dividend .*$', tax_row.Description)
+                validate(
+                    condition=action_type is not None and len(action_type.groups()) == 1,
+                    error="The only type of Dividend implemented is Cash Dividend (Withholding Tax row).",
+                    context=tax_row
+                )
+
+                key = f'{action_type.group(1)} {tax_row.Currency} {tax_row.Date}'
+                taxes[key] = tax_row.Amount
+
+        data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
+        row: DividendsRow
+        for row in data.loc[~data['Currency'].str.startswith('Total')].itertuples():
+            action_type = re.search(r'^(.*)\(.*?\) Cash Dividend .*$', row.Description)
+            validate(
+                condition=action_type is not None and len(action_type.groups()) == 1,
+                error="The only type of Dividend implemented is Cash Dividend.",
+                context=row
+            )
+
+            raw_ticker = action_type.group(1)
+            key = f'{raw_ticker} {row.Currency} {row.Date.strftime(self.__date_format)}'
+            tax_value = taxes[key] if key in taxes else 0
+
+            validate(
+                condition=row.Amount > 0 and tax_value <= 0 and abs(tax_value) < row.Amount,
+                error="Dividend and Withholding Tax amounts should be correct.",
+                context=[tax_value, row]
+            )
+
+            show_dividends_warning_once()
+
+            yield OutputRow(
+                TimestampUTC=row.Date,
+                Type=OutputType.FiatDeposit,
+                BaseCurrency=row.Currency,
+                BaseAmount=row.Amount + tax_value,
+                From=Exchange.Dividends,
                 To=Exchange.Ibkr,
                 Description=f'{Exchange.Ibkr} {row.Description}'
             )

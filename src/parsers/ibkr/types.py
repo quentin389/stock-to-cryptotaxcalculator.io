@@ -74,6 +74,22 @@ class InterestRow(NamedTuple):
     Amount: float
 
 
+class DividendsRow(NamedTuple):
+    Header: str
+    Currency: str
+    Date: Timestamp
+    Description: str
+    Amount: float
+
+
+class WithholdingTaxRow(NamedTuple):
+    Header: str
+    Currency: str
+    Date: str
+    Description: str
+    Amount: float
+
+
 class CorporateActionsRow(NamedTuple):
     Header: str
     Asset_Category: str
