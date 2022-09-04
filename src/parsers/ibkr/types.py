@@ -66,6 +66,14 @@ class StocksAndDerivativesTradesRow(NamedTuple):
     Code: list[Codes]
 
 
+class InterestRow(NamedTuple):
+    Header: str
+    Currency: str
+    Date: Timestamp
+    Description: str
+    Amount: float
+
+
 class CorporateActionsRow(NamedTuple):
     Header: str
     Asset_Category: str

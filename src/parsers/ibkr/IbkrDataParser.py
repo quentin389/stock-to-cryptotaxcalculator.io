@@ -11,7 +11,7 @@ from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
-    CorporateActionsRow, Codes, TransferRow
+    CorporateActionsRow, Codes, TransferRow, InterestRow
 
 
 class IbkrDataParser(AbstractDataParser):
@@ -36,6 +36,7 @@ class IbkrDataParser(AbstractDataParser):
               if 'Deposits & Withdrawals' in self.__tables else []),
             *(self.__parse_account_fees(self.__tables['Fees']) if 'Fees' in self.__tables else []),
             *(self.__parse_trades(self.__tables['Trades']) if 'Trades' in self.__tables else []),
+            *(self.__parse_interest(self.__tables['Interest']) if 'Interest' in self.__tables else []),
             *(self.__parse_stock_splits(self.__tables['Corporate Actions'])
               if 'Corporate Actions' in self.__tables else []),
             *(self.__parse_transfers(self.__tables['Transfers']) if 'Transfers' in self.__tables else []),
@@ -364,6 +365,29 @@ class IbkrDataParser(AbstractDataParser):
             QuoteAmount=(row.Proceeds + row.Comm_Fee),
             QuoteCurrency=row.Currency,
         )
+
+    def __parse_interest(self, data: DataFrame) -> list[OutputRow]:
+        data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
+
+        row: InterestRow
+        for row in data.loc[~data['Currency'].str.startswith('Total')].itertuples():
+            validate(
+                condition=row.Amount > 0,
+                error="Interest amount has to be positive.",
+                context=row
+            )
+
+            yield OutputRow(
+                TimestampUTC=row.Date,
+                Type=OutputType.Interest,
+                BaseCurrency=row.Currency,
+                BaseAmount=row.Amount,
+                From=Exchange.Ibkr,
+                To=Exchange.Ibkr,
+                Description=f'{Exchange.Ibkr} {row.Description}'
+            )
+
+        return []
 
     def __parse_stock_splits(self, data: DataFrame) -> list[OutputRow]:
         data_frames.normalize_column_names(data)
