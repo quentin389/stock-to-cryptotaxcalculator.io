@@ -7,6 +7,9 @@ translate_tickers = {
         'MDT.US': 'MDT',
         'ROG.ZU': 'ROG.SW',
     },
+    Exchange.IG: {
+
+    },
     Exchange.Ibkr: {
         'VACQ': 'RKLB'
     }

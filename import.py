@@ -7,7 +7,7 @@ argument_parser = argparse.ArgumentParser("import.py")
 argument_parser.add_argument(
     'parser',
     help='The parser to user.',
-    choices=['etoro', 'ibkr']
+    choices=['etoro', 'ibkr', 'ig']
 )
 argument_parser.add_argument(
     'source',
@@ -21,6 +21,11 @@ argument_parser.add_argument(
          'in the current directory (or a subdirectory, if you specify it) and will overwrite any existing file. ',
     type=str
 )
+argument_parser.add_argument(
+    '--second_source',
+    help='Some formats may require more than one source file.',
+    type=str
+)
 
 arguments = argument_parser.parse_args()
 
@@ -31,6 +36,11 @@ if arguments.parser == 'etoro':
 elif arguments.parser == 'ibkr':
     from parsers.ibkr.IbkrDataParser import IbkrDataParser
     data_parser = IbkrDataParser(arguments.source, arguments.target)
+elif arguments.parser == 'ig':
+    if not arguments.second_source:
+        raise Exception('IG format requires "--second_source" to be specified (see README.md)')
+    from parsers.ig.IgDataParser import IgDataParser
+    data_parser = IgDataParser(arguments.source, arguments.second_source, arguments.target)
 else:
     raise Exception("incorrect parser.")
 
