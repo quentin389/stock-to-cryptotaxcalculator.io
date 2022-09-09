@@ -1,4 +1,7 @@
-from typing import NamedTuple
+from dataclasses import dataclass
+from typing import NamedTuple, Optional
+
+from pandas import Timestamp
 
 
 class TradeRow(NamedTuple):
@@ -17,7 +20,7 @@ class TradeRow(NamedTuple):
     Conversion_rate: float
     Order_type: str
     Venue_ID: str
-    Settled_: str
+    Settled_: bool
     Settlement_date: str
     Order_ID: str
 
@@ -40,3 +43,12 @@ class TransactionRow(NamedTuple):
     DateUtc: str  # TODO: could I use this?
     OpenDateUtc: str
     CurrencyIsoCode: str
+
+
+@dataclass
+class Trade:
+    Date: Timestamp
+    Trade: TradeRow
+    Consideration: Optional[TransactionRow] = None
+    Commission: Optional[TransactionRow] = None
+    Fee: Optional[TransactionRow] = None
