@@ -1,6 +1,5 @@
 import locale
 from decimal import Decimal, ROUND_HALF_UP
-from pprint import pprint
 
 import pandas
 from pandas import DataFrame, to_datetime
@@ -48,24 +47,20 @@ class IgDataParser(AbstractDataParser):
         self.__add_transactions_to_trade(trade)
 
         if trade.Trade.Activity == 'TRADE' and trade.Trade.Direction == 'BUY':
-            return self._parse_buy_trade(trade)
+            return self.__parse_buy_trade(trade)
+        if trade.Trade.Activity == 'TRADE' and trade.Trade.Direction == 'SELL':
+            return self.__parse_sell_trade(trade)
 
         # print("TODO: parse me")  # TODO: parse those records and add a validation at the end
 
         return []
 
-    def _parse_buy_trade(self, trade_data: Trade) -> list[OutputRow]:
+    def __parse_buy_trade(self, trade_data: Trade) -> list[OutputRow]:
         trade = trade_data.Trade
-        validate(
-            condition=trade.Market in translate_tickers[Exchange.IG],
-            error="IG does not have Tickers in the export files\n"
-                  "You have to match each name to a correct stock ticker manually.\n"
-                  f"Add '{trade.Market}' to the 'translate_tickers' dict for IG.\n"
-                  "Remember to add names in such a way that they match names from other exchanges:\n"
-                  "US tickers just as is, for example 'GOOG', and other tickers as custom names.",
-            context=trade.Market
-        )
-        ticker = parse_ticker(trade.Market, Exchange.IG, AssetType.Stock)
+        commission = trade_data.Commission
+        consideration = trade_data.Consideration
+        ticker = self.__parse_ticker(trade.Market)
+        self.__validate_trade(trade_data)
 
         validate(
             condition=trade_data.Fee is None,
@@ -73,36 +68,19 @@ class IgDataParser(AbstractDataParser):
             context=trade_data
         )
         validate(
-            condition=trade.Settled_ is True and trade_data.Consideration is not None
-                      and bool(trade_data.Commission is not None) != bool(trade.Commission == 0),
-            error="Parsing opening trades that are not settled or don't have full information is not implemented.",
-            context=trade_data
-        )
-        validate(
             condition=0 > trade.Consideration == self.__round(trade.Price * trade.Quantity / -100),
             error="Trade price fields should be internally consistent.",
             context=trade
         )
-
-        consideration = trade_data.Consideration
         validate(
             condition=consideration.Transaction_type == 'WITH' and consideration.ProfitAndLoss ==
                       consideration.Currency + self.__format_money(consideration.PL_Amount),
-            error="Consideration fields are internally consistent.",
+            error="Consideration fields should be internally consistent.",
             context=consideration
         )
 
-        commission = trade_data.Commission
-        validate(
-            condition=commission is None or (commission.ProfitAndLoss == commission.Currency
-                                             + self.__format_money(commission.PL_Amount) and commission.PL_Amount < 0),
-            error="Commission fields are internally consistent",
-            context=commission
-        )
+        # TODO: how do we model money conversions here? Maybe we need to parse the Consideration row? Else change yield
 
-        # TODO: how do we model money conversions here? Maybe we need to parse the Consideration row?
-
-        # returns Trade and Commission as one record
         yield OutputRow(
             TimestampUTC=trade_data.Date,
             Type=OutputType.Buy,
@@ -119,6 +97,67 @@ class IgDataParser(AbstractDataParser):
             # itself has to have occurred in the stock native currency.
             QuoteCurrency=trade.Currency,
             QuoteAmount=abs(trade.Consideration)
+        )
+
+    def __parse_sell_trade(self, trade_data: Trade) -> list[OutputRow]:
+        trade = trade_data.Trade
+        consideration = trade_data.Consideration
+        commission = trade_data.Commission
+        fee = trade_data.Fee
+        ticker = self.__parse_ticker(trade.Market)
+        self.__validate_trade(trade_data)
+
+        validate(
+            condition=0 < trade.Consideration == self.__round(trade.Price * trade.Quantity / -100),
+            error="Trade price fields should be internally consistent.",
+            context=trade
+        )
+        validate(
+            condition=consideration.Transaction_type == 'DEPO' and consideration.ProfitAndLoss ==
+                      consideration.Currency + self.__format_money(consideration.PL_Amount),
+            error="Consideration fields should be internally consistent.",
+            context=consideration
+        )
+        validate(
+            condition=bool(trade.Charges == 0) != bool(fee is not None),
+            error='Fees can only exist if Trade Charges exist',
+            context=trade_data
+        )
+        validate(
+            condition=fee is None or (fee.ProfitAndLoss == fee.Currency
+                                      + self.__format_money(fee.PL_Amount) and fee.PL_Amount < 0),
+            error="Fee fields should be internally consistent",
+            context=commission
+        )
+        validate(
+            condition=fee is None or commission is None or fee.CurrencyIsoCode == commission.CurrencyIsoCode,
+            error="To merge Commissions and Fees (Charges) into the base Trade, only one, "
+                  "common currency is allowed for both Fee and Commission.",
+            context=trade_data
+        )
+
+        fee_currency = ''
+        fee_amount = None
+        if fee is not None or commission is not None:
+            fee_currency = fee.CurrencyIsoCode if fee is not None else commission.CurrencyIsoCode
+            fee_amount = 0 + abs(fee.PL_Amount if fee is not None else 0)
+            fee_amount += abs(commission.PL_Amount if commission is not None else 0)
+
+        # TODO: how do we model money conversions here? Maybe we need to parse the Consideration row? Else change yield
+
+        yield OutputRow(
+            TimestampUTC=trade_data.Date,
+            Type=OutputType.Sell,
+            BaseCurrency=ticker,
+            BaseAmount=abs(trade.Quantity),
+            QuoteCurrency=trade.Currency,
+            QuoteAmount=trade.Consideration,
+            FeeCurrency=fee_currency,
+            FeeAmount=fee_amount,
+            From=Exchange.IG,
+            To=Exchange.IG,
+            ID=trade.Order_ID,
+            Description=f'{Exchange.IG} {trade.Direction} {trade.Market}',
         )
 
     def __add_transactions_to_trade(self, trade: Trade) -> None:
@@ -152,6 +191,22 @@ class IgDataParser(AbstractDataParser):
                     context=[transaction, trade]
                 )
 
+    def __validate_trade(self, trade_data: Trade) -> None:
+        validate(
+            condition=trade_data.Trade.Settled_ is True and trade_data.Consideration is not None
+                      and bool(trade_data.Commission is not None) != bool(trade_data.Trade.Commission == 0),
+            error="Parsing trades that are not settled or don't have full information is not implemented.",
+            context=trade_data
+        )
+
+        commission = trade_data.Commission
+        validate(
+            condition=commission is None or (commission.ProfitAndLoss == commission.Currency
+                                             + self.__format_money(commission.PL_Amount) and commission.PL_Amount < 0),
+            error="Commission fields should be internally consistent",
+            context=commission
+        )
+
     def __parse_files(self) -> None:
         config = dict(skip_blank_lines=True, na_values=["-"], true_values=['Y'], false_values=['N'], thousands=',')
         first_source = pandas.read_csv(self._get_source(), **config)
@@ -173,6 +228,19 @@ class IgDataParser(AbstractDataParser):
                 error="The passed files do not appear to be 'TradeHistory' and 'TransactionHistory'.",
                 context=[self._get_source(), self.__second_source]
             )
+
+    @staticmethod
+    def __parse_ticker(ticker: str) -> str:
+        validate(
+            condition=ticker in translate_tickers[Exchange.IG],
+            error="IG does not have Tickers in the export files\n"
+                  "You have to match each name to a correct stock ticker manually.\n"
+                  f"Add '{ticker}' to the 'translate_tickers' dict for IG.\n"
+                  "Remember to add names in such a way that they match names from other exchanges:\n"
+                  "US tickers just as is, for example 'GOOG', and other tickers as custom names.",
+            context=ticker
+        )
+        return parse_ticker(ticker, Exchange.IG, AssetType.Stock)
 
     @staticmethod
     def __round(number: float, exponent: str = '.00') -> float:

@@ -27,6 +27,7 @@ translate_tickers = {
         'NVIDIA Corp (All Sessions)': 'NVDA',
         'One (Ord)': 'MKFG',
         'Palantir Technologies Inc': 'PLTR',
+        'Palantir Technologies Inc (All Sessions)': 'PLTR',
         'Rocket Lab USA Inc': 'RKLB',
         'SPDR S&P 500 ETF Trust (All Sessions)': 'SPY',
         'Shift4 Payments Inc': 'FOUR',
