@@ -8,7 +8,7 @@ from config.config import translate_tickers
 from config.types import OutputRow, Exchange, AssetType, OutputType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan
+from helpers.validation import validate, is_nan, show_stock_transfers_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ig.types import TradeRow, TransactionRow, Trade
 
@@ -40,20 +40,27 @@ class IgDataParser(AbstractDataParser):
 
     def __parse_trade_row(self, trade_row: TradeRow) -> list[OutputRow]:
         # noinspection PyTypeChecker
-        trade = Trade(
+        trade_data = Trade(
             Date=to_datetime(f'{trade_row.Date} {trade_row.Time}', format='%d-%m-%Y %H:%M:%S'),
             Trade=trade_row
         )
-        self.__add_transactions_to_trade(trade)
+        self.__add_transactions_to_trade(trade_data)
 
-        if trade.Trade.Activity == 'TRADE' and trade.Trade.Direction == 'BUY':
-            return self.__parse_buy_trade(trade)
-        if trade.Trade.Activity == 'TRADE' and trade.Trade.Direction == 'SELL':
-            return self.__parse_sell_trade(trade)
+        if trade_data.Trade.Activity == 'TRADE' and trade_data.Trade.Direction == 'BUY':
+            return self.__parse_buy_trade(trade_data)
+        if trade_data.Trade.Activity == 'TRADE' and trade_data.Trade.Direction == 'SELL':
+            return self.__parse_sell_trade(trade_data)
+        if trade_data.Trade.Activity == 'CORPORATE ACTION':
+            return self.__parse_corporate_action(trade_data)
+        if trade_data.Trade.Activity == 'TRANSFER':
+            return self.__parse_transfer(trade_data)
 
-        # print("TODO: parse me")  # TODO: parse those records and add a validation at the end
-
-        return []
+        validate(
+            condition=False,
+            error=f'The activity "{trade_data.Trade.Activity}" with direction "{trade_data.Trade.Direction}" '
+                  'is not implemented.',
+            context=trade_data.Trade
+        )
 
     def __parse_buy_trade(self, trade_data: Trade) -> list[OutputRow]:
         trade = trade_data.Trade
@@ -158,6 +165,61 @@ class IgDataParser(AbstractDataParser):
             To=Exchange.IG,
             ID=trade.Order_ID,
             Description=f'{Exchange.IG} {trade.Direction} {trade.Market}',
+        )
+
+    @staticmethod
+    def __parse_corporate_action(trade_data: Trade) -> list[OutputRow]:
+        trade = trade_data.Trade
+
+        validate(
+            condition=trade_data.Consideration is None and trade_data.Commission is None and trade_data.Fee is None,
+            error="Corporate Actions do not have auxiliary information.",
+            context=trade_data
+        )
+
+        validate(
+            condition=trade.Price == 0 and trade.Consideration == 0 and is_nan(trade.Commission) and trade.Charges == 0
+                      and trade.Cost_Proceeds == 0,
+            error="No Corporate Actions of consequence are implemented.",
+            context=trade
+        )
+
+        # This action could be a SPAC merge where one stock is exchanged for another, but the way it's modeled
+        # in the files is that there is no information about the old and new name, so you have to manage it manually
+        return []
+
+    def __parse_transfer(self, trade_data: Trade) -> list[OutputRow]:
+        trade = trade_data.Trade
+        ticker = self.__parse_ticker(trade.Market)
+
+        show_stock_transfers_warning_once()
+
+        validate(
+            condition=trade_data.Consideration is None and trade_data.Commission is None and trade_data.Fee is None,
+            error="Stock Transfers do not have auxiliary information.",
+            context=trade_data
+        )
+        validate(
+            condition=trade.Direction == 'SELL' and trade.Quantity < 0,
+            error="Only outgoing Stock Transfers are implemented.",
+            context=trade,
+        )
+        validate(
+            condition=trade.Price == 0 and is_nan(trade.Commission) and is_nan(trade.Charges)
+                      and is_nan(trade.Cost_Proceeds) and is_nan(trade.Conversion_rate),
+            error="Stock Transfers have to have certain fields empty.",
+            context=trade
+        )
+
+        yield OutputRow(
+            TimestampUTC=trade_data.Date,
+            Type=OutputType.Send,
+            BaseCurrency=ticker,
+            BaseAmount=abs(trade.Quantity),
+            From=Exchange.IG,
+            To=Exchange.Unknown,
+            ID=trade.Order_ID,
+            Description=f'{Exchange.IG} Outgoing Transfer: {trade.Market}',
         )
 
     def __add_transactions_to_trade(self, trade: Trade) -> None:

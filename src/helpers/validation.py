@@ -42,4 +42,14 @@ def show_dividends_warning_once() -> None:
     )
 
 
+def show_stock_transfers_warning_once() -> None:
+    show_warning_once(
+        group="Stock Transfers",
+        message="For stock transfers to be recognized correctly by cryptotaxcalculator.io the 'send' and 'receive' "
+                "transactions need to be matched by several criteria.\nIt's important to match those transactions "
+                "by manually adjusting them.\nOne important criterion is that they have to occur within one hour, "
+                "which for stock transfers may not be the case."
+    )
+
+
 show_warning_once.already_shown = {}

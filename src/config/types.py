@@ -39,6 +39,7 @@ class OutputType(str, Enum):
     RealizedLoss = 'realized-loss'
     Fee = 'fee'
     Receive = 'receive'
+    Send = 'send'
 
 
 # noinspection PyMethodParameters

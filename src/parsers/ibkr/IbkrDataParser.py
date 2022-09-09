@@ -9,7 +9,7 @@ from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once, \
-    show_dividends_warning_once
+    show_dividends_warning_once, show_stock_transfers_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
     CorporateActionsRow, Codes, TransferRow, InterestRow, WithholdingTaxRow, DividendsRow
@@ -492,13 +492,7 @@ class IbkrDataParser(AbstractDataParser):
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
 
-        show_warning_once(
-            group="Stock Transfers",
-            message="For stock transfers to be recognized correctly by cryptotaxcalculator.io the 'send' and 'receive' "
-                    "transactions need to be matched by several criteria.\nIt's important to match those transactions "
-                    "by manually adjusting them.\nOne important criterion is that they have to occur within one hour, "
-                    "which for stock transfers may not be the case."
-        )
+        show_stock_transfers_warning_once()
 
         row: TransferRow
         for row in data.loc[~data['Asset_Category'].str.startswith('Total')].itertuples():
@@ -528,8 +522,6 @@ class IbkrDataParser(AbstractDataParser):
                 Type=OutputType.Receive,
                 BaseCurrency=self.__parse_ticker(row.Symbol, AssetType.Stock),
                 BaseAmount=row.Qty,
-                # QuoteCurrency=row.Currency,
-                # QuoteAmount=row.Market_Value,
                 From=Exchange.Unknown,
                 To=Exchange.Ibkr,
                 Description=f'{Exchange.Ibkr} incoming stock transfer from: '
