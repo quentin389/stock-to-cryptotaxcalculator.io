@@ -40,7 +40,7 @@ class TransactionRow(NamedTuple):
     Currency: str
     PL_Amount: float
     Cash_transaction: bool
-    DateUtc: str  # TODO: could I use this?
+    DateUtc: Timestamp
     OpenDateUtc: str
     CurrencyIsoCode: str
 

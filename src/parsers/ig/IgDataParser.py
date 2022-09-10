@@ -1,5 +1,6 @@
 import locale
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Optional
 
 import pandas
 from pandas import DataFrame, to_datetime
@@ -8,7 +9,8 @@ from config.config import translate_tickers
 from config.types import OutputRow, Exchange, AssetType, OutputType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, show_stock_transfers_warning_once
+from helpers.validation import validate, is_nan
+from helpers.warnings import show_stock_transfers_warning_once, show_dividends_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ig.types import TradeRow, TransactionRow, Trade
 
@@ -33,8 +35,11 @@ class IgDataParser(AbstractDataParser):
             for result in self.__parse_trade_row(trade_row):
                 yield result
 
-        # TODO: parse currency transactions
-        # print(self.__transactions)
+        transaction: TransactionRow
+        for transaction in self.__transactions.itertuples():
+            result = self.__parse_transaction(transaction)
+            if result:
+                yield result
 
         return []
 
@@ -222,6 +227,67 @@ class IgDataParser(AbstractDataParser):
             Description=f'{Exchange.IG} Outgoing Transfer: {trade.Market}',
         )
 
+    def __parse_transaction(self, transaction: TransactionRow) -> Optional[OutputRow]:  # TODO: optional?
+        validate(
+            condition=transaction.Cash_transaction is False,
+            error="This cannot be a Cash Transaction (I don't even know what it is).",
+            context=transaction
+        )
+
+        # Note that 'Inter Account Transfers' are implemented as deposits and withdrawals, not 'send' and 'receive'.
+        # That's because for currency transfers it doesn't really matter if you match it as a transfer, because
+        # those are not a taxable events. And it makes it simpler, as you don't have to match anything manually.
+
+        if transaction.Transaction_type == 'DEPO':
+            if transaction.Summary == 'Cash In' or transaction.Summary == 'Inter Account Transfers':
+                return self.__parse_simple_transaction(transaction, OutputType.FiatDeposit, row_from=Exchange.Bank)
+            if transaction.Summary == 'Currency Transfers':
+                # print(transaction)
+                # return self.__parse_simple_transaction(transaction, OutputType.Buy)
+                return None  # TODO: implement
+            if transaction.Summary == 'Dividend':
+                show_dividends_warning_once()
+                return self.__parse_simple_transaction(transaction, OutputType.FiatDeposit, row_from=Exchange.Dividends)
+
+        if transaction.Transaction_type == 'WITH':
+            # Note that I'm guessing that this transaction type is called 'Cash Out'. This may be incorrect.
+            if transaction.Summary == 'Cash Out' or transaction.Summary == 'Inter Account Transfers':
+                return self.__parse_simple_transaction(transaction, OutputType.FiatWithdrawal, row_to=Exchange.Bank)
+            if transaction.Summary == 'Currency Transfers':
+                # print(transaction)
+                # return self.__parse_simple_transaction(transaction, OutputType.Sell)
+                return None  # TODO: implement
+            if is_nan(transaction.Summary) and transaction.MarketName.startswith("Custody Fee "):
+                return self.__parse_simple_transaction(transaction, OutputType.Fee)
+
+        if transaction.Transaction_type == 'EXCHANGE' and transaction.Summary == 'Exchange Fees':
+            return self.__parse_simple_transaction(transaction, OutputType.Fee)
+
+        validate(
+            condition=False,
+            error=f'Transaction type "{transaction.Transaction_type}" ("{transaction.Summary}") is not implemented.',
+            context=transaction
+        )
+
+    @staticmethod
+    def __parse_simple_transaction(
+            transaction: TransactionRow,
+            row_type: OutputType,
+            row_from: Exchange = Exchange.IG,
+            row_to: Exchange = Exchange.IG,
+    ) -> OutputRow:
+
+        return OutputRow(
+            TimestampUTC=transaction.DateUtc,
+            Type=row_type,
+            BaseCurrency=transaction.CurrencyIsoCode,
+            BaseAmount=abs(transaction.PL_Amount),
+            From=row_from,
+            To=row_to,
+            ID=transaction.Reference,
+            Description=f'{Exchange.IG} {transaction.Summary}: {transaction.MarketName}'
+        )
+
     def __add_transactions_to_trade(self, trade: Trade) -> None:
         order_id = trade.Trade.Order_ID
         transaction: TransactionRow
@@ -290,6 +356,8 @@ class IgDataParser(AbstractDataParser):
                 error="The passed files do not appear to be 'TradeHistory' and 'TransactionHistory'.",
                 context=[self._get_source(), self.__second_source]
             )
+
+        data_frames.parse_date(self.__transactions, 'DateUtc', '%Y-%m-%dT%H:%M:%S')
 
     @staticmethod
     def __parse_ticker(ticker: str) -> str:

@@ -7,8 +7,8 @@ from pydantic import validate_arguments
 from helpers import data_frames, date_time
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, show_warning_once, show_stock_split_warning_once, \
-    show_dividends_warning_once
+from helpers.validation import validate, is_nan
+from helpers.warnings import show_warning_once, show_stock_split_warning_once, show_dividends_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.etoro.types import TransactionRow, PositionRow
 

@@ -8,8 +8,9 @@ from pandas import DataFrame
 from config.types import OutputRow, OutputType, Exchange, AssetType
 from helpers import data_frames
 from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, is_currency, show_warning_once, show_stock_split_warning_once, \
-    show_dividends_warning_once, show_stock_transfers_warning_once
+from helpers.validation import validate, is_nan, is_currency
+from helpers.warnings import show_option_lapse_warning_once, show_dividends_warning_once, \
+    show_stock_split_warning_once, show_stock_transfers_warning_once
 from parsers.AbstractDataParser import AbstractDataParser
 from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
     CorporateActionsRow, Codes, TransferRow, InterestRow, WithholdingTaxRow, DividendsRow
@@ -335,12 +336,7 @@ class IbkrDataParser(AbstractDataParser):
                 error="Option Lapse has to have correct values.",
                 context=row
             )
-            show_warning_once(
-                group="Option Lapse",
-                message="Lapsed (expired) options are implemented as a sale with value 0.\nThis means that "
-                        "cryptotaxcalculator.io thinks that the position value is 0 and will show "
-                        "a 'missing market price' warning.\nThose warnings should be dismissed."
-            )
+            show_option_lapse_warning_once()
         else:  # stock or option position close
             # noinspection PyChainedComparisons
             validate(
