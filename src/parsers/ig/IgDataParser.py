@@ -154,13 +154,19 @@ class IgDataParser(AbstractDataParser):
             fee_amount = 0 + abs(fee.PL_Amount if fee is not None else 0)
             fee_amount += abs(commission.PL_Amount if commission is not None else 0)
 
+        quote_amount = trade.Consideration
+        if commission is not None and trade.Currency == commission.CurrencyIsoCode:
+            # cryptotaxcalculator.io includes the fee amount in the quote amount for the selling trades in the same
+            # currency as the fee
+            quote_amount += commission.PL_Amount
+
         yield OutputRow(
             TimestampUTC=trade_data.Date,
             Type=OutputType.Sell,
             BaseCurrency=ticker,
             BaseAmount=abs(trade.Quantity),
             QuoteCurrency=trade.Currency,
-            QuoteAmount=trade.Consideration,
+            QuoteAmount=quote_amount,
             FeeCurrency=fee_currency,
             FeeAmount=fee_amount,
             From=Exchange.IG,
