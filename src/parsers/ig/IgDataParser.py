@@ -36,6 +36,10 @@ class IgDataParser(AbstractDataParser):
             for result in self.__parse_trade_row(trade_row):
                 yield result
 
+        for result in self.__parse_manual_currency_conversions(
+                self.__transactions.loc[self.__transactions['Summary'] == 'Currency Transfers']):
+            yield result
+
         transaction: TransactionRow
         for transaction in self.__transactions.itertuples():
             result = self.__parse_transaction(transaction)
@@ -215,6 +219,45 @@ class IgDataParser(AbstractDataParser):
         )
 
     @staticmethod
+    def __parse_manual_currency_conversions(currency_transfers: DataFrame) -> list[OutputRow]:
+        buy_transaction: TransactionRow
+        for buy_transaction in currency_transfers.loc[currency_transfers['Transaction_type'] == 'DEPO'].itertuples():
+            sell_data_frame = currency_transfers.loc[
+                (currency_transfers['Transaction_type'] == 'WITH')
+                & (currency_transfers['MarketName'] == buy_transaction.MarketName)
+                & (currency_transfers['DateUtc'] == buy_transaction.DateUtc)
+            ]
+            validate(
+                condition=sell_data_frame.shape[0],
+                error="Each DEPO Currency Transfer has to have exactly one WITH Currency Transfer exactly matching.",
+                context=buy_transaction
+            )
+            sell_transaction: TransactionRow
+            sell_transaction = [x for x in sell_data_frame.itertuples()][0]
+
+            validate(
+                condition=buy_transaction.CurrencyIsoCode != sell_transaction.CurrencyIsoCode
+                          and sell_transaction.PL_Amount < 0 < buy_transaction.PL_Amount,
+                error="Currency and values of Currency Transfers should be consistent.",
+                context=[buy_transaction, sell_transaction]
+            )
+
+            yield OutputRow(
+                TimestampUTC=buy_transaction.DateUtc,
+                Type=OutputType.Buy,
+                BaseCurrency=buy_transaction.CurrencyIsoCode,
+                BaseAmount=buy_transaction.PL_Amount,
+                QuoteCurrency=sell_transaction.CurrencyIsoCode,
+                QuoteAmount=abs(sell_transaction.PL_Amount),
+                From=Exchange.IG,
+                To=Exchange.IG,
+                ID=f'{buy_transaction.Reference},{sell_transaction.Reference}',
+                Description=f'{Exchange.IG} {buy_transaction.Summary}: {buy_transaction.MarketName}'
+            )
+
+        return []
+
+    @staticmethod
     def __parse_corporate_action(trade_data: Trade) -> list[OutputRow]:
         trade = trade_data.Trade
 
@@ -269,7 +312,7 @@ class IgDataParser(AbstractDataParser):
             Description=f'{Exchange.IG} Outgoing Transfer: {trade.Market}',
         )
 
-    def __parse_transaction(self, transaction: TransactionRow) -> Optional[OutputRow]:  # TODO: optional?
+    def __parse_transaction(self, transaction: TransactionRow) -> Optional[OutputRow]:
         validate(
             condition=transaction.Cash_transaction is False,
             error="This cannot be a Cash Transaction (I don't even know what it is).",
@@ -283,24 +326,20 @@ class IgDataParser(AbstractDataParser):
         if transaction.Transaction_type == 'DEPO':
             if transaction.Summary == 'Cash In' or transaction.Summary == 'Inter Account Transfers':
                 return self.__parse_simple_transaction(transaction, OutputType.FiatDeposit, row_from=Exchange.Bank)
-            if transaction.Summary == 'Currency Transfers':
-                # print(transaction)
-                return self.__parse_simple_transaction(transaction, OutputType.Buy)
-                return None  # TODO: implement
             if transaction.Summary == 'Dividend':
                 show_dividends_warning_once()
                 return self.__parse_simple_transaction(transaction, OutputType.FiatDeposit, row_from=Exchange.Dividends)
+            if transaction.Summary == 'Currency Transfers':
+                return None
 
         if transaction.Transaction_type == 'WITH':
             # Note that I'm guessing that this transaction type is called 'Cash Out'. This may be incorrect.
             if transaction.Summary == 'Cash Out' or transaction.Summary == 'Inter Account Transfers':
                 return self.__parse_simple_transaction(transaction, OutputType.FiatWithdrawal, row_to=Exchange.Bank)
-            if transaction.Summary == 'Currency Transfers':
-                # print(transaction)
-                return self.__parse_simple_transaction(transaction, OutputType.Sell)
-                return None  # TODO: implement
             if is_nan(transaction.Summary) and transaction.MarketName.startswith("Custody Fee "):
                 return self.__parse_simple_transaction(transaction, OutputType.Fee)
+            if transaction.Summary == 'Currency Transfers':
+                return None
 
         if transaction.Transaction_type == 'EXCHANGE' and transaction.Summary == 'Exchange Fees':
             return self.__parse_simple_transaction(transaction, OutputType.Fee)
