@@ -1,4 +1,5 @@
 import locale
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
@@ -91,24 +92,22 @@ class IgDataParser(AbstractDataParser):
             context=consideration
         )
 
-        # TODO: how do we model money conversions here? Maybe we need to parse the Consideration row? Else change yield
+        if trade.Currency != consideration.CurrencyIsoCode:
+            yield self.__parse_automatic_currency_conversion(trade_data, True)
 
         yield OutputRow(
             TimestampUTC=trade_data.Date,
             Type=OutputType.Buy,
             BaseCurrency=ticker,
             BaseAmount=trade.Quantity,
+            QuoteCurrency=trade.Currency,
+            QuoteAmount=abs(trade.Consideration),
             FeeCurrency='' if commission is None else commission.CurrencyIsoCode,
             FeeAmount=None if commission is None else abs(commission.PL_Amount),
             From=Exchange.IG,
             To=Exchange.IG,
             ID=trade.Order_ID,
-            Description=f'{Exchange.IG} {trade.Direction} {trade.Market}',
-
-            # Whether the Consideration row is in the same currency as Trade or not, doesn't matter, because the Trade
-            # itself has to have occurred in the stock native currency.
-            QuoteCurrency=trade.Currency,
-            QuoteAmount=abs(trade.Consideration)
+            Description=f'{Exchange.IG} {trade.Direction} {trade.Market}'
         )
 
     def __parse_sell_trade(self, trade_data: Trade) -> list[OutputRow]:
@@ -155,8 +154,6 @@ class IgDataParser(AbstractDataParser):
             fee_amount = 0 + abs(fee.PL_Amount if fee is not None else 0)
             fee_amount += abs(commission.PL_Amount if commission is not None else 0)
 
-        # TODO: how do we model money conversions here? Maybe we need to parse the Consideration row? Else change yield
-
         yield OutputRow(
             TimestampUTC=trade_data.Date,
             Type=OutputType.Sell,
@@ -170,6 +167,45 @@ class IgDataParser(AbstractDataParser):
             To=Exchange.IG,
             ID=trade.Order_ID,
             Description=f'{Exchange.IG} {trade.Direction} {trade.Market}',
+        )
+
+        if trade.Currency != consideration.CurrencyIsoCode:
+            yield self.__parse_automatic_currency_conversion(trade_data, False)
+
+    @staticmethod
+    def __parse_automatic_currency_conversion(trade_data: Trade, is_buy: bool) -> OutputRow:
+        # If the trade and consideration have different currencies, it means that the trade was made using IG's
+        # automatic currency conversion. While the trade still occurs in the stock currency, we have to record
+        # an additional forex conversion.
+
+        # noinspection PyArgumentList
+        # All these dates are consistent with when you have performed the trades, but not consistent with settlement
+        # dates. On top of that, I modify the original trade date for the forex conversion, in order to make sure
+        # the transactions occur in correct order.
+        assumed_time = trade_data.Date + pandas.DateOffset(seconds=-1 if is_buy else 1)
+
+        trade = trade_data.Trade
+        consideration = trade_data.Consideration
+        parsed_conversion = re.search(r'^.* Converted at ([\d.]+)$', consideration.MarketName)
+        validate(
+            condition=parsed_conversion is not None and len(parsed_conversion.groups()) == 1,
+            error="Trade with automatic currency conversion has to have the conversion rate specified",
+            context=[trade, consideration]
+        )
+        conversion_rate = float(parsed_conversion.group(1))
+
+        return OutputRow(
+            TimestampUTC=assumed_time,
+            Type=OutputType.Buy if is_buy else OutputType.Sell,
+            BaseCurrency=trade.Currency,
+            BaseAmount=abs(trade.Consideration),
+            QuoteCurrency=consideration.CurrencyIsoCode,
+            QuoteAmount=abs(consideration.PL_Amount),
+            From=Exchange.IG,
+            To=Exchange.IG,
+            ID=trade.Order_ID,
+            Description=f'{Exchange.IG} {trade.Direction} {trade.Currency} for {consideration.CurrencyIsoCode} '
+                        f'at {conversion_rate}'
         )
 
     @staticmethod
@@ -243,7 +279,7 @@ class IgDataParser(AbstractDataParser):
                 return self.__parse_simple_transaction(transaction, OutputType.FiatDeposit, row_from=Exchange.Bank)
             if transaction.Summary == 'Currency Transfers':
                 # print(transaction)
-                # return self.__parse_simple_transaction(transaction, OutputType.Buy)
+                return self.__parse_simple_transaction(transaction, OutputType.Buy)
                 return None  # TODO: implement
             if transaction.Summary == 'Dividend':
                 show_dividends_warning_once()
@@ -255,7 +291,7 @@ class IgDataParser(AbstractDataParser):
                 return self.__parse_simple_transaction(transaction, OutputType.FiatWithdrawal, row_to=Exchange.Bank)
             if transaction.Summary == 'Currency Transfers':
                 # print(transaction)
-                # return self.__parse_simple_transaction(transaction, OutputType.Sell)
+                return self.__parse_simple_transaction(transaction, OutputType.Sell)
                 return None  # TODO: implement
             if is_nan(transaction.Summary) and transaction.MarketName.startswith("Custody Fee "):
                 return self.__parse_simple_transaction(transaction, OutputType.Fee)
@@ -320,14 +356,22 @@ class IgDataParser(AbstractDataParser):
                 )
 
     def __validate_trade(self, trade_data: Trade) -> None:
+        trade = trade_data.Trade
+        consideration = trade_data.Consideration
+        commission = trade_data.Commission
         validate(
-            condition=trade_data.Trade.Settled_ is True and trade_data.Consideration is not None
-                      and bool(trade_data.Commission is not None) != bool(trade_data.Trade.Commission == 0),
+            condition=trade.Settled_ is True and trade_data.Consideration is not None
+                      and bool(commission is not None) != bool(trade.Commission == 0),
             error="Parsing trades that are not settled or don't have full information is not implemented.",
             context=trade_data
         )
+        validate(
+            condition=bool(trade.Currency == consideration.CurrencyIsoCode)
+                      == bool(trade.Consideration == consideration.PL_Amount),
+            error="Trade and Consideration currencies and values should be consistent.",
+            context=trade_data
+        )
 
-        commission = trade_data.Commission
         validate(
             condition=commission is None or (commission.ProfitAndLoss == commission.Currency
                                              + self.__format_money(commission.PL_Amount) and commission.PL_Amount < 0),
