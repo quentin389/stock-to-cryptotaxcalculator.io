@@ -52,3 +52,26 @@ class Trade:
     Consideration: Optional[TransactionRow] = None
     Commission: Optional[TransactionRow] = None
     Fee: Optional[TransactionRow] = None
+
+
+class CfdClosingTrade(NamedTuple):
+    Closing_Ref: str
+    Closed: Timestamp
+    Opening_Ref: str
+    Opened: Timestamp
+    Market: str
+    Period: str
+    Direction: str
+    Size: float
+    Opening: float
+    Closing: float
+    Trade_Ccy_: str
+    P_L: float
+    Funding: float
+    Borrowing: float
+    Dividends: float
+    LR_Prem_: float
+    Others: float
+    Comm__Ccy_: str
+    Comm_: float
+    Total: float

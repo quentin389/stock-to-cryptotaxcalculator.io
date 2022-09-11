@@ -54,8 +54,12 @@ This parser accepts the following formats:
     transaction. This means that if you parse several consecutive files, some
     money transfers from overlapping periods may be repeated, and you will have
     to fix it yourself by hand, if you care about accurate currency data.
-
-and that's it
+  * CFDs. There is only one file needed as this uses a simplified parsing method
+    where only closing trades are recorded (e.g. some account fees may be skipped).
+    To obtain the file, go to the History tab of a CFD Trading account and select
+    "Profit/loss breakdown". Only closed positions are relevant, opening positions
+    can be present in the file, but will be ignored. The file will have a format of
+    `TradeBreakDown-(dateFrom)-(dateTo).cfd`
 
 ## How to use
 

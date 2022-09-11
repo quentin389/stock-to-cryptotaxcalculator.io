@@ -13,9 +13,10 @@ class AssetType(str, Enum):
 
 
 class Exchange(str, Enum):
+    Bank = 'Bank'
     Etoro = 'eToro'
     IG = 'IG'
-    Bank = 'Bank'
+    IG_CFD = 'IG-CFD'
 
     # This is Interactive Brokers, but writing the full name does not make sense as it's shown as "Interactive b...".
     Ibkr = 'IBKR'

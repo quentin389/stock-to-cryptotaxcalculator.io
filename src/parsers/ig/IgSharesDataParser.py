@@ -1,22 +1,18 @@
-import locale
 import re
-from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
 import pandas
 from pandas import DataFrame, to_datetime
 
-from config.config import translate_tickers
-from config.types import OutputRow, Exchange, AssetType, OutputType
+from config.types import OutputRow, Exchange, OutputType
 from helpers import data_frames
-from helpers.stock_market import parse_ticker
 from helpers.validation import validate, is_nan
 from helpers.warnings import show_stock_transfers_warning_once, show_dividends_warning_once
-from parsers.AbstractDataParser import AbstractDataParser
+from parsers.ig.AbstractIgDataParser import AbstractIgDataParser
 from parsers.ig.types import TradeRow, TransactionRow, Trade
 
 
-class IgDataParser(AbstractDataParser):
+class IgSharesDataParser(AbstractIgDataParser):
     __trades: DataFrame
     __transactions: DataFrame
 
@@ -25,7 +21,6 @@ class IgDataParser(AbstractDataParser):
         self.__second_source = second_source
 
     def run(self) -> None:
-        locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
         self.__parse_files()
         data = [*self.__parse()]
         self._save_output(data)
@@ -76,7 +71,7 @@ class IgDataParser(AbstractDataParser):
         trade = trade_data.Trade
         commission = trade_data.Commission
         consideration = trade_data.Consideration
-        ticker = self.__parse_ticker(trade.Market)
+        ticker = self._parse_ticker(trade.Market)
         self.__validate_trade(trade_data)
 
         validate(
@@ -85,13 +80,13 @@ class IgDataParser(AbstractDataParser):
             context=trade_data
         )
         validate(
-            condition=0 > trade.Consideration == self.__round(trade.Price * trade.Quantity / -100),
+            condition=0 > trade.Consideration == self._round(trade.Price * trade.Quantity / -100),
             error="Trade price fields should be internally consistent.",
             context=trade
         )
         validate(
             condition=consideration.Transaction_type == 'WITH' and consideration.ProfitAndLoss ==
-                      consideration.Currency + self.__format_money(consideration.PL_Amount),
+                      consideration.Currency + self._format_money(consideration.PL_Amount),
             error="Consideration fields should be internally consistent.",
             context=consideration
         )
@@ -119,17 +114,17 @@ class IgDataParser(AbstractDataParser):
         consideration = trade_data.Consideration
         commission = trade_data.Commission
         fee = trade_data.Fee
-        ticker = self.__parse_ticker(trade.Market)
+        ticker = self._parse_ticker(trade.Market)
         self.__validate_trade(trade_data)
 
         validate(
-            condition=0 < trade.Consideration == self.__round(trade.Price * trade.Quantity / -100),
+            condition=0 < trade.Consideration == self._round(trade.Price * trade.Quantity / -100),
             error="Trade price fields should be internally consistent.",
             context=trade
         )
         validate(
             condition=consideration.Transaction_type == 'DEPO' and consideration.ProfitAndLoss ==
-                      consideration.Currency + self.__format_money(consideration.PL_Amount),
+                      consideration.Currency + self._format_money(consideration.PL_Amount),
             error="Consideration fields should be internally consistent.",
             context=consideration
         )
@@ -140,7 +135,7 @@ class IgDataParser(AbstractDataParser):
         )
         validate(
             condition=fee is None or (fee.ProfitAndLoss == fee.Currency
-                                      + self.__format_money(fee.PL_Amount) and fee.PL_Amount < 0),
+                                      + self._format_money(fee.PL_Amount) and fee.PL_Amount < 0),
             error="Fee fields should be internally consistent",
             context=commission
         )
@@ -280,7 +275,7 @@ class IgDataParser(AbstractDataParser):
 
     def __parse_transfer(self, trade_data: Trade) -> list[OutputRow]:
         trade = trade_data.Trade
-        ticker = self.__parse_ticker(trade.Market)
+        ticker = self._parse_ticker(trade.Market)
 
         show_stock_transfers_warning_once()
 
@@ -419,7 +414,7 @@ class IgDataParser(AbstractDataParser):
 
         validate(
             condition=commission is None or (commission.ProfitAndLoss == commission.Currency
-                                             + self.__format_money(commission.PL_Amount) and commission.PL_Amount < 0),
+                                             + self._format_money(commission.PL_Amount) and commission.PL_Amount < 0),
             error="Commission fields should be internally consistent",
             context=commission
         )
@@ -447,25 +442,3 @@ class IgDataParser(AbstractDataParser):
             )
 
         data_frames.parse_date(self.__transactions, 'DateUtc', '%Y-%m-%dT%H:%M:%S')
-
-    @staticmethod
-    def __parse_ticker(ticker: str) -> str:
-        validate(
-            condition=ticker in translate_tickers[Exchange.IG],
-            error="IG does not have Tickers in the export files\n"
-                  "You have to match each name to a correct stock ticker manually.\n"
-                  f"Add '{ticker}' to the 'translate_tickers' dict for IG.\n"
-                  "Remember to add names in such a way that they match names from other exchanges:\n"
-                  "US tickers just as is, for example 'GOOG', and other tickers as custom names.",
-            context=ticker
-        )
-        return parse_ticker(ticker, Exchange.IG, AssetType.Stock)
-
-    @staticmethod
-    def __round(number: float, exponent: str = '.00') -> float:
-        # IG rounds halves up
-        return float(Decimal(number).quantize(Decimal(exponent), ROUND_HALF_UP))
-
-    @staticmethod
-    def __format_money(number: float) -> str:
-        return locale.format_string('%.2f', number, True)
