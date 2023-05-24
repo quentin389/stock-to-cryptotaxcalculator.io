@@ -55,8 +55,11 @@ class OutputRow(BaseModel):
     FeeAmount: float = None
     From: Exchange
     To: Exchange
+    Blockchain: str = ''
     ID: str = ''
     Description: str
+    ReferencePricePerUnit: float = None
+    ReferencePriceCurrency: str = ''
 
     @validator('TimestampUTC')
     def convert_timestamp_to_string(cls, timestamp: Timestamp) -> str:

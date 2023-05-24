@@ -318,6 +318,8 @@ class IbkrDataParser(AbstractDataParser):
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
             Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
+            ReferencePricePerUnit=round(abs(row.Proceeds/row.Quantity), 6),
+            ReferencePriceCurrency=row.Currency,
         )
 
     def __parse_stock_or_derivative_closing_trade(
@@ -360,6 +362,8 @@ class IbkrDataParser(AbstractDataParser):
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
             Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
+            ReferencePricePerUnit=round(abs(row.Proceeds/row.Quantity), 6),
+            ReferencePriceCurrency=row.Currency,
 
             # The opening trade FeeAmount is not included in QuoteAmount in cryptotaxcalculator.io import,
             # but the closing trade FeeAmount is. So we have to set the QuoteAmount to a sum of those values.
@@ -433,7 +437,7 @@ class IbkrDataParser(AbstractDataParser):
                 TimestampUTC=row.Date,
                 Type=OutputType.FiatDeposit,
                 BaseCurrency=row.Currency,
-                BaseAmount=row.Amount + tax_value,
+                BaseAmount=round(row.Amount + tax_value, 6),
                 From=Exchange.Dividends,
                 To=Exchange.Ibkr,
                 Description=f'{Exchange.Ibkr} {row.Description}'
