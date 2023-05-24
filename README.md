@@ -61,5 +61,13 @@ This parser accepts the following formats:
     can be present in the file, but will be ignored. The file will have a format of
     `TradeBreakDown-(dateFrom)-(dateTo).cfd`
 
+Latest tax year for which given formats are confirmed to be working:
+* eToro - 2021-22
+* IG - 2021-22
+* IBKR - 2022-23
+
 ## How to use
 
+* Install python and poetry
+* Run `poetry install`
+* Run `poetry run python import.py -h`
