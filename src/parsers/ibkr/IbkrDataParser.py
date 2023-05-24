@@ -396,7 +396,7 @@ class IbkrDataParser(AbstractDataParser):
         taxes = {}
         if tax_data is not None:
             tax_row: WithholdingTaxRow
-            for tax_row in tax_data.loc[~data['Currency'].str.startswith('Total')].itertuples():
+            for tax_row in tax_data.loc[~tax_data['Currency'].str.startswith('Total')].itertuples():
                 action_type = re.search(r'^(.*)\(.*?\) Cash Dividend .*$', tax_row.Description)
                 validate(
                     condition=action_type is not None and len(action_type.groups()) == 1,
