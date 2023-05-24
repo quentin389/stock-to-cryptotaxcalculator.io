@@ -4,13 +4,13 @@ from typing import Optional, Union
 import pandas
 from pydantic import validate_arguments
 
-from helpers import data_frames, date_time
-from config.types import OutputRow, OutputType, Exchange, AssetType
-from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan
-from helpers.warnings import show_warning_once, show_stock_split_warning_once, show_dividends_warning_once
-from parsers.AbstractDataParser import AbstractDataParser
-from parsers.etoro.types import TransactionRow, PositionRow
+from src.helpers import data_frames, date_time
+from src.config.types import OutputRow, OutputType, Exchange, AssetType
+from src.helpers.stock_market import parse_ticker
+from src.helpers.validation import validate, is_nan
+from src.helpers.warnings import show_warning_once, show_stock_split_warning_once, show_dividends_warning_once
+from src.parsers.AbstractDataParser import AbstractDataParser
+from src.parsers.etoro.types import TransactionRow, PositionRow
 
 
 class EtoroDataParser(AbstractDataParser):

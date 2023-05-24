@@ -4,12 +4,12 @@ from typing import Optional
 import pandas
 from pandas import DataFrame, to_datetime
 
-from config.types import OutputRow, Exchange, OutputType
-from helpers import data_frames
-from helpers.validation import validate, is_nan
-from helpers.warnings import show_stock_transfers_warning_once, show_dividends_warning_once
-from parsers.ig.AbstractIgDataParser import AbstractIgDataParser
-from parsers.ig.types import TradeRow, TransactionRow, Trade
+from src.config.types import OutputRow, Exchange, OutputType
+from src.helpers import data_frames
+from src.helpers.validation import validate, is_nan
+from src.helpers.warnings import show_stock_transfers_warning_once, show_dividends_warning_once
+from src.parsers.ig.AbstractIgDataParser import AbstractIgDataParser
+from src.parsers.ig.types import TradeRow, TransactionRow, Trade
 
 
 class IgSharesDataParser(AbstractIgDataParser):

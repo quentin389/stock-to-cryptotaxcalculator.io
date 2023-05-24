@@ -1,6 +1,6 @@
 import argparse
 
-from parsers.AbstractDataParser import AbstractDataParser
+from src.parsers.AbstractDataParser import AbstractDataParser
 
 argument_parser = argparse.ArgumentParser("import.py")
 
@@ -31,18 +31,18 @@ arguments = argument_parser.parse_args()
 
 data_parser: AbstractDataParser
 if arguments.parser == 'etoro':
-    from parsers.etoro.EtoroDataParser import EtoroDataParser
+    from src.parsers.etoro.EtoroDataParser import EtoroDataParser
     data_parser = EtoroDataParser(arguments.source, arguments.target)
 elif arguments.parser == 'ibkr':
-    from parsers.ibkr.IbkrDataParser import IbkrDataParser
+    from src.parsers.ibkr.IbkrDataParser import IbkrDataParser
     data_parser = IbkrDataParser(arguments.source, arguments.target)
 elif arguments.parser == 'ig-shares':
     if not arguments.second_source:
         raise Exception('IG Shares format requires "--second_source" to be specified (see README.md)')
-    from parsers.ig.IgSharesDataParser import IgSharesDataParser
+    from src.parsers.ig.IgSharesDataParser import IgSharesDataParser
     data_parser = IgSharesDataParser(arguments.source, arguments.second_source, arguments.target)
 elif arguments.parser == 'ig-cfd':
-    from parsers.ig.IgCfdDataParser import IgCfdDataParser
+    from src.parsers.ig.IgCfdDataParser import IgCfdDataParser
     data_parser = IgCfdDataParser(arguments.source, arguments.target)
 else:
     raise Exception("incorrect parser.")

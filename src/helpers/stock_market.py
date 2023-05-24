@@ -1,9 +1,9 @@
 import re
 
-from config.config import translate_tickers
-from config.types import Exchange, AssetType
-from helpers.validation import validate
-from helpers.warnings import show_warning_once
+from src.config.config import translate_tickers
+from src.config.types import Exchange, AssetType
+from src.helpers.validation import validate
+from src.helpers.warnings import show_warning_once
 
 
 def parse_ticker(

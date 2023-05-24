@@ -2,11 +2,11 @@ import locale
 from abc import ABC
 from decimal import Decimal, ROUND_HALF_UP
 
-from config.config import translate_tickers
-from config.types import Exchange, AssetType
-from helpers.stock_market import parse_ticker
-from helpers.validation import validate
-from parsers.AbstractDataParser import AbstractDataParser
+from src.config.config import translate_tickers
+from src.config.types import Exchange, AssetType
+from src.helpers.stock_market import parse_ticker
+from src.helpers.validation import validate
+from src.parsers.AbstractDataParser import AbstractDataParser
 
 
 class AbstractIgDataParser(AbstractDataParser, ABC):

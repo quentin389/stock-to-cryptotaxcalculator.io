@@ -1,4 +1,4 @@
-from config.types import Exchange
+from src.config.types import Exchange
 
 # noinspection SpellCheckingInspection
 translate_tickers = {

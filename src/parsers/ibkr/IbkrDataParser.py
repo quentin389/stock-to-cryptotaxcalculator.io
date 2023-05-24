@@ -5,14 +5,14 @@ from typing import Iterator, Optional
 import pandas
 from pandas import DataFrame
 
-from config.types import OutputRow, OutputType, Exchange, AssetType
-from helpers import data_frames
-from helpers.stock_market import parse_ticker
-from helpers.validation import validate, is_nan, is_currency
-from helpers.warnings import show_option_lapse_warning_once, show_dividends_warning_once, \
+from src.config.types import OutputRow, OutputType, Exchange, AssetType
+from src.helpers import data_frames
+from src.helpers.stock_market import parse_ticker
+from src.helpers.validation import validate, is_nan, is_currency
+from src.helpers.warnings import show_option_lapse_warning_once, show_dividends_warning_once, \
     show_stock_split_warning_once, show_stock_transfers_warning_once
-from parsers.AbstractDataParser import AbstractDataParser
-from parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
+from src.parsers.AbstractDataParser import AbstractDataParser
+from src.parsers.ibkr.types import DepositsAndWithdrawalsRow, FeesRow, ForexTradesRow, StocksAndDerivativesTradesRow, \
     CorporateActionsRow, Codes, TransferRow, InterestRow, WithholdingTaxRow, DividendsRow
 
 

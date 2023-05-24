@@ -1,12 +1,12 @@
 import pandas
 from pandas import DataFrame
 
-from config.types import OutputRow, OutputType, Exchange
-from helpers import data_frames
-from helpers.validation import validate
-from helpers.warnings import show_warning_once
-from parsers.ig.AbstractIgDataParser import AbstractIgDataParser
-from parsers.ig.types import CfdClosingTrade
+from src.config.types import OutputRow, OutputType, Exchange
+from src.helpers import data_frames
+from src.helpers.validation import validate
+from src.helpers.warnings import show_warning_once
+from src.parsers.ig.AbstractIgDataParser import AbstractIgDataParser
+from src.parsers.ig.types import CfdClosingTrade
 
 
 class IgCfdDataParser(AbstractIgDataParser):

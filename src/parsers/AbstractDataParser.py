@@ -1,7 +1,7 @@
 import csv
 from abc import ABC, abstractmethod
 
-from config.types import OutputRow
+from src.config.types import OutputRow
 
 
 class AbstractDataParser(ABC):
