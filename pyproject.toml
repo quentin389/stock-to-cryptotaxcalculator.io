@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Parse stock data to cryptotaxcalculator.io format in order to do your stock taxes in the UK."
 authors = ["Mikolaj Misiurewicz <mikolaj.misiurewicz@gmail.com>"]
 license = "GPL-3.0-only"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.9"

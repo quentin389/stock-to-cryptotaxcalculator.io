@@ -502,8 +502,8 @@ class IbkrDataParser(AbstractDataParser):
                 context=row
             )
             validate(
-                condition=row.Type == 'FOP' and is_nan(row.Xfer_Price),
-                error="Only FOP (Free Of Payment) Transfers are implemented.",
+                condition=(row.Type == 'FOP' or row.Type == 'Internal') and is_nan(row.Xfer_Price),
+                error="Only 'FOP (Free Of Payment)' and 'Internal' Transfers are implemented.",
                 context=row
             )
             validate(
