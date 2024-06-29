@@ -60,11 +60,15 @@ This parser accepts the following formats:
     "Profit/loss breakdown". Only closed positions are relevant, opening positions
     can be present in the file, but will be ignored. The file will have a format of
     `TradeBreakDown-(dateFrom)-(dateTo).cfd`
+* Schwab for vesting equity awards. Requires transaction history CSV for both
+  Equity Award Center and the Brokerage account the shares were deposited to.
+  The equity award file has to be specified as a `--second_source` argument.
 
 Latest tax year for which given formats are confirmed to be working:
 * eToro - 2021-22
 * IG - 2021-22
-* IBKR - 2022-23
+* IBKR - 2023-24
+* Schwab - 2023-24
 
 ## How to use
 

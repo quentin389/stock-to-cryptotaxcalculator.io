@@ -7,7 +7,7 @@ argument_parser = argparse.ArgumentParser("import.py")
 argument_parser.add_argument(
     'parser',
     help='The parser to user.',
-    choices=['etoro', 'ibkr', 'ig-shares', 'ig-cfd']
+    choices=['etoro', 'ibkr', 'ig-shares', 'ig-cfd', 'schwab']
 )
 argument_parser.add_argument(
     'source',
@@ -44,6 +44,11 @@ elif arguments.parser == 'ig-shares':
 elif arguments.parser == 'ig-cfd':
     from src.parsers.ig.IgCfdDataParser import IgCfdDataParser
     data_parser = IgCfdDataParser(arguments.source, arguments.target)
+elif arguments.parser == 'schwab':
+    if not arguments.second_source:
+        raise Exception('Schwab format requires "--second_source" to be specified (see README.md)')
+    from src.parsers.schwab.SchwabDataParser import SchwabDataParser
+    data_parser = SchwabDataParser(arguments.source, arguments.second_source, arguments.target)
 else:
     raise Exception("incorrect parser.")
 

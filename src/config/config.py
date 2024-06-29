@@ -40,4 +40,5 @@ translate_tickers = {
         'Twitter Inc (All Sessions)': 'TWTR',
         'Vector Acquisition Corporation': 'RKLB',
     },
+    Exchange.Schwab: {},
 }

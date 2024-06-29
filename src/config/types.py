@@ -17,6 +17,7 @@ class Exchange(str, Enum):
     Etoro = 'eToro'
     IG = 'IG'
     IG_CFD = 'IG-CFD'
+    Schwab = 'Schwab'
 
     # This is Interactive Brokers, but writing the full name does not make sense as it's shown as "Interactive b...".
     Ibkr = 'IBKR'
