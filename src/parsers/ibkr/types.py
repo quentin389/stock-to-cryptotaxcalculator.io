@@ -12,9 +12,11 @@ class Codes(str, Enum):
     P = 'Partial Execution'
     O = 'Opening Trade'  # noqa: E741
     Ep = 'Resulted from an Expired Position'
+    AFx = 'AutoFX conversion resulting from trading'
 
     # ignore those codes
     FPA = ''
+    IM = ''
 
 
 class DepositsAndWithdrawalsRow(NamedTuple):

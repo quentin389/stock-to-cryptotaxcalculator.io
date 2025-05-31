@@ -43,7 +43,7 @@ class IbkrDataParser(AbstractDataParser):
                 self.__tables['Dividends'],
                 self.__tables['Withholding Tax'] if 'Withholding Tax' in self.__tables else None
             ) if 'Dividends' in self.__tables else []),
-            *(self.__parse_stock_splits(self.__tables['Corporate Actions'])
+            *(self.__parse_corporate_actions(self.__tables['Corporate Actions'])
               if 'Corporate Actions' in self.__tables else []),
             *(self.__parse_transfers(self.__tables['Transfers']) if 'Transfers' in self.__tables else []),
         ]
@@ -63,7 +63,7 @@ class IbkrDataParser(AbstractDataParser):
             context=data
         )
 
-    def __parse_deposits_and_withdrawals(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_deposits_and_withdrawals(self, data: DataFrame) -> Iterator[OutputRow]:
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Settle_Date', self.__date_format)
 
@@ -80,9 +80,7 @@ class IbkrDataParser(AbstractDataParser):
                 Description=f'{Exchange.Ibkr} {row.Description}'
             )
 
-        return []
-
-    def __parse_account_fees(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_account_fees(self, data: DataFrame) -> Iterator[OutputRow]:
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Date', self.__date_format)
         fees_rows = data.loc[(data['Header'] == 'Data') & (data['Subtitle'] != 'Total')]
@@ -132,9 +130,7 @@ class IbkrDataParser(AbstractDataParser):
                     Description=f'{Exchange.Ibkr} {row.Subtitle} Sales Tax of {sales_tax * 100}%',
                 )
 
-        return []
-
-    def __parse_trades(self, trade_tables: DataFrame) -> list[OutputRow]:
+    def __parse_trades(self, trade_tables: DataFrame) -> Iterator[OutputRow]:
         for table in trade_tables:
             asset_category_line = table['Asset Category'][0]
             # noinspection PyUnresolvedReferences
@@ -174,9 +170,7 @@ class IbkrDataParser(AbstractDataParser):
                 for result in self.__parse_forex_trades(table):
                     yield result
 
-        return []
-
-    def __parse_forex_trades(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_forex_trades(self, data: DataFrame) -> Iterator[OutputRow]:
         comm_name = f'Comm_in_{self.__base_currency}'
         mtm_name = f'MTM_in_{self.__base_currency}'
         validate(
@@ -193,7 +187,7 @@ class IbkrDataParser(AbstractDataParser):
                 error="Forex Trade fields should be consistent.",
                 context=row
             )
-            self.__validate_allowed_codes(row.Code, [Codes.L], 'Forex Trades')
+            self.__validate_allowed_codes(row.Code, [Codes.L, Codes.AFx], 'Forex Trades')
 
             symbol_values = row.Symbol.split('.')
             validate(
@@ -254,9 +248,7 @@ class IbkrDataParser(AbstractDataParser):
                                 f'from {quote_currency} to {base_currency}{self.__code__values_to_string(row.Code)}'
                 )
 
-        return []
-
-    def __parse_stocks_and_derivatives(self, data: DataFrame, asset_type: AssetType) -> list[OutputRow]:
+    def __parse_stocks_and_derivatives(self, data: DataFrame, asset_type: AssetType) -> Iterator[OutputRow]:
         # Note for Options:
         # The rules below only implement options buying. Writing options is not implemented.
         # On the buy side, the only implemented transactions are 'sell' (close position) and 'lapse' (expire).
@@ -285,8 +277,6 @@ class IbkrDataParser(AbstractDataParser):
                     error=f"Only opening and closing {asset_type} Trades are allowed.",
                     context=row
                 )
-
-        return []
 
     def __parse_stock_or_derivative_opening_trade(
             self, row: StocksAndDerivativesTradesRow, asset_type: AssetType
@@ -318,7 +308,7 @@ class IbkrDataParser(AbstractDataParser):
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
             Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
-            ReferencePricePerUnit=round(abs(row.Proceeds/row.Quantity), 6),
+            ReferencePricePerUnit=round(abs(row.Proceeds / row.Quantity), 6),
             ReferencePriceCurrency=row.Currency,
         )
 
@@ -358,11 +348,11 @@ class IbkrDataParser(AbstractDataParser):
             BaseCurrency=self.__parse_ticker(row.Symbol, asset_type),
             BaseAmount=abs(row.Quantity),
             FeeCurrency=row.Currency,
-            FeeAmount=abs(row.Comm_Fee),
+            FeeAmount=abs(float(row.Comm_Fee)),
             From=Exchange.Ibkr,
             To=Exchange.Ibkr,
             Description=f'{Exchange.Ibkr} {asset_type} Trade{self.__code__values_to_string(row.Code)}',
-            ReferencePricePerUnit=round(abs(row.Proceeds/row.Quantity), 6),
+            ReferencePricePerUnit=round(abs(row.Proceeds / row.Quantity), 6),
             ReferencePriceCurrency=row.Currency,
 
             # The opening trade FeeAmount is not included in QuoteAmount in cryptotaxcalculator.io import,
@@ -371,7 +361,7 @@ class IbkrDataParser(AbstractDataParser):
             QuoteCurrency=row.Currency,
         )
 
-    def __parse_interest(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_interest(self, data: DataFrame) -> Iterator[OutputRow]:
         data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
 
         row: InterestRow
@@ -392,9 +382,7 @@ class IbkrDataParser(AbstractDataParser):
                 Description=f'{Exchange.Ibkr} {row.Description}'
             )
 
-        return []
-
-    def __parse_dividends(self, data: DataFrame, tax_data: Optional[DataFrame]) -> list[OutputRow]:
+    def __parse_dividends(self, data: DataFrame, tax_data: Optional[DataFrame]) -> Iterator[OutputRow]:
         # Because of the dividends taxation rules, the withholding tax should not be a separate item to the dividend
         # itself, so I'm subtracting the tax from the dividend base value
         taxes = {}
@@ -426,7 +414,7 @@ class IbkrDataParser(AbstractDataParser):
             tax_value = taxes[key] if key in taxes else 0
 
             validate(
-                condition=row.Amount > 0 and tax_value <= 0 and abs(tax_value) < row.Amount,
+                condition=row.Amount > 0 >= tax_value and abs(tax_value) < row.Amount,
                 error="Dividend and Withholding Tax amounts should be correct.",
                 context=[tax_value, row]
             )
@@ -443,9 +431,7 @@ class IbkrDataParser(AbstractDataParser):
                 Description=f'{Exchange.Ibkr} {row.Description}'
             )
 
-        return []
-
-    def __parse_stock_splits(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_corporate_actions(self, data: DataFrame) -> Iterator[OutputRow]:
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Date_Time', self.__datetime_format, self.__timezone)
         data_frames.parse_date(data, 'Report_Date', self.__date_format, self.__timezone)
@@ -457,38 +443,68 @@ class IbkrDataParser(AbstractDataParser):
                 error="Only stock Corporate Actions are implemented.",
                 context=row
             )
-            action_type = re.search(r'^(.*)\(.*?\) Split .*$', row.Description)
+
+            action_type = re.match(r'^(.*)\(.*?\) Split .*$', row.Description)
+            if action_type:
+                validate(
+                    condition=row.Quantity > 0 and row.Proceeds == row.Value == row.Realized_P_L == 0,
+                    error="Corporate Action stock split has to have correct numeric fields values.",
+                    context=row
+                )
+                validate(
+                    condition=is_nan(row.Code),
+                    error="No Codes are allowed for stock split Corporate Action.",
+                    context=row
+                )
+
+                show_stock_split_warning_once()
+
+                yield OutputRow(
+                    TimestampUTC=row.Date_Time,
+                    Type=OutputType.ChainSplit,  # See EtoroDataParser stock split for explanation.
+                    BaseCurrency=self.__parse_ticker(action_type.group(1), AssetType.Stock),
+                    BaseAmount=row.Quantity,
+                    From=Exchange.Ibkr,
+                    To=Exchange.Ibkr,
+                    Description=f'{Exchange.Ibkr} {row.Description}',
+                )
+                continue
+
+            action_type = re.match(r'^(.*)\(.*?\) Merged\(Acquisition\) .*$', row.Description)
+            if action_type:
+                validate(
+                    condition=row.Quantity < 0 < row.Proceeds,
+                    error="Corporate Action merge/acquisition has to have correct numeric fields values.",
+                    context=row
+                )
+                validate(
+                    condition=is_nan(row.Code),
+                    error="No Codes are allowed for merge/acquisition Corporate Action.",
+                    context=row
+                )
+
+                yield OutputRow(
+                    TimestampUTC=row.Date_Time,
+                    Type=OutputType.Sell,
+                    BaseCurrency=self.__parse_ticker(action_type.group(1), AssetType.Stock),
+                    BaseAmount=abs(row.Quantity),
+                    QuoteCurrency=row.Currency,
+                    QuoteAmount=round(row.Proceeds, 6),
+                    From=Exchange.Ibkr,
+                    To=Exchange.Ibkr,
+                    Description=f'{Exchange.Ibkr} {row.Description}',
+                    ReferencePricePerUnit=round(abs(row.Proceeds / row.Quantity), 6),
+                    ReferencePriceCurrency=row.Currency,
+                )
+                continue
+
             validate(
-                condition=action_type is not None and len(action_type.groups()) == 1,
-                error="The only Corporate Action implemented is stock split.",
+                condition=False,
+                error="The only implemented Corporate Actions are 'stock split' and 'merger/acquisition'.",
                 context=row
             )
-            validate(
-                condition=row.Quantity > 0 and row.Proceeds == 0 and row.Value == 0 and row.Realized_P_L == 0,
-                error="Corporate Action stock split has to have correct numeric fields values.",
-                context=row
-            )
-            validate(
-                condition=is_nan(row.Code),
-                error="No Codes are allowed for stock split Corporate Action.",
-                context=row
-            )
 
-            show_stock_split_warning_once()
-
-            yield OutputRow(
-                TimestampUTC=row.Date_Time,
-                Type=OutputType.ChainSplit,  # See EtoroDataParser stock split for explanation.
-                BaseCurrency=self.__parse_ticker(action_type.group(1), AssetType.Stock),
-                BaseAmount=row.Quantity,
-                From=Exchange.Ibkr,
-                To=Exchange.Ibkr,
-                Description=f'{Exchange.Ibkr} {row.Description}',
-            )
-
-        return []
-
-    def __parse_transfers(self, data: DataFrame) -> list[OutputRow]:
+    def __parse_transfers(self, data: DataFrame) -> Iterator[OutputRow]:
         data_frames.normalize_column_names(data)
         data_frames.parse_date(data, 'Date', self.__date_format, self.__timezone)
 
@@ -528,8 +544,6 @@ class IbkrDataParser(AbstractDataParser):
                             f'{"unknown" if is_nan(row.Xfer_Company) else row.Xfer_Company} '
                             f'/ {"unknown" if is_nan(row.Xfer_Account) else row.Xfer_Account}'
             )
-
-        return []
 
     def __get_sales_tax(self) -> float:
         data = self.__tables['Change in NAV']

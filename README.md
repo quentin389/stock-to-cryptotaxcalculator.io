@@ -67,11 +67,11 @@ This parser accepts the following formats:
 Latest tax year for which given formats are confirmed to be working:
 * eToro - 2021-22
 * IG - 2021-22
-* IBKR - 2023-24
-* Schwab - 2023-24
+* IBKR - 2024-25
+* Schwab - 2024-25
 
 ## How to use
 
-* Install python and poetry
+* Install python 3.9 and poetry
 * Run `poetry install`
 * Run `poetry run python import.py -h`
