@@ -189,7 +189,7 @@ class IbkrDataParser(AbstractDataParser):
                 error="Forex Trade fields should be consistent.",
                 context=row
             )
-            self.__validate_allowed_codes(row.Code, [Codes.L, Codes.AFx], 'Forex Trades')
+            self.__validate_allowed_codes(row.Code, [Codes.L, Codes.AFx, Codes.P], 'Forex Trades')
 
             symbol_values = row.Symbol.split('.')
             validate(
