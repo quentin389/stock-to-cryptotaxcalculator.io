@@ -513,7 +513,7 @@ class IbkrDataParser(AbstractDataParser):
         row: TransferRow
         for row in data.loc[~data['Asset_Category'].str.startswith('Total')].itertuples():
             validate(
-                condition=row.Asset_Category.startswith('Stocks ') and row.Direction == 'In',
+                condition=row.Asset_Category == 'Stocks' and row.Direction == 'In',
                 error="Only incoming stock Transfers are implemented.",
                 context=row
             )
