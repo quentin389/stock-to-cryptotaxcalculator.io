@@ -131,6 +131,8 @@ class IbkrDataParser(AbstractDataParser):
                 )
 
     def __parse_trades(self, trade_tables: DataFrame) -> Iterator[OutputRow]:
+        if isinstance(trade_tables, DataFrame):
+            trade_tables = [trade_tables]
         for table in trade_tables:
             asset_category_line = table['Asset Category'][0]
             # noinspection PyUnresolvedReferences
