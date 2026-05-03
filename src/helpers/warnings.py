@@ -38,10 +38,11 @@ def show_option_lapse_warning_once() -> None:
 def show_stock_transfers_warning_once() -> None:
     show_warning_once(
         group="Stock Transfers",
-        message="For stock transfers to be recognized correctly by summ.com, the 'send' and 'receive' "
-                "transactions need to be matched by several criteria.\nIt's important to match those transactions "
-                "by manually adjusting them.\nOne important criterion is that they have to occur within one hour, "
-                "which for stock transfers may not be the case."
+        message="Stock transfers are imported as 'receive' rows with no cost basis.\nsumm.com derives cost basis "
+                "by pairing them with a matching 'send' from another imported account.\nCriteria include ≤1 hour "
+                "between them, so you may need to manually align timestamps so the match works.\nIf the source "
+                "account is not imported (transfer from a non-taxable wrapper such as an ISA),\nset cost basis "
+                "manually using market value at transfer date (should be provided by IBKR in the source file)."
     )
 
 

@@ -9,6 +9,10 @@ translate_tickers = {
     },
     Exchange.Ibkr: {
         'VACQ': 'RKLB',
+        # Self-translation: VERV.CVR is IBKR's canonical ticker for the
+        # Verve Therapeutics "Contingent Value Right", kept as-is.
+        # Listed here only to suppress the non-standard-character warning.
+        'VERV.CVR': 'VERV.CVR',
     },
     Exchange.IG: {
         'ARK Autonomous Technology & Robotics ETF': 'ARKQ',
