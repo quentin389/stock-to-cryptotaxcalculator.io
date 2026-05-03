@@ -281,7 +281,7 @@ class EtoroDataParser(AbstractDataParser):
             Description=f'{Exchange.Etoro} {position.Action}: {transaction.Type}',
 
             # This seems like the best approximation of a stock split. The new shares appear out of nowhere,
-            # as a result of a corporate action. Even though cryptotaxcalculator.io says that this transaction type
+            # as a result of a corporate action. Even though summ.com says that this transaction type
             # should have 0 cost basis, this is not the case, and requires setting this by hand, by ignoring the
             # 'missing market price' warning after import. At least that's how it works currently.
             # After that, because of HMRC Section 104 rules, this should have the cost basis correctly adjusted,
@@ -327,7 +327,7 @@ class EtoroDataParser(AbstractDataParser):
         )
 
         # Since CFDs are taxed only by profits and losses, without any additional rules, the open trade does
-        # not matter, and couldn't even be correctly entered into cryptotaxcalculator.io. Also, since we validate
+        # not matter, and couldn't even be correctly entered into summ.com. Also, since we validate
         # realized equity change above, we probably don't have to care about any initial fees.
         return None
 
@@ -379,7 +379,7 @@ class EtoroDataParser(AbstractDataParser):
             # as a "currency" as with stock, instead of just cramming it into description and pretending the currency
             # is just USD. Especially that it shows in a slightly confusing way in the final report that way.
             # However, this "advanced manual CSV" import does not accept field combinations with "realized-profit" and
-            # "realized-loss" transactions that would allow this to be exported to cryptotaxcalculator.io.
+            # "realized-loss" transactions that would allow this to be exported to summ.com.
             # So, in the end, just a simple dollar amount seems like the best option. And it's relatively compatible
             # with what HMRC requires.
             BaseCurrency=self.__base_fiat,

@@ -11,7 +11,7 @@ argument_parser.add_argument(
 )
 argument_parser.add_argument(
     'source',
-    help='Source file with the data to be changed to cryptotaxcalculator.io "Advanced Manual CSV" format. '
+    help='Source file with the data to be changed to summ.com "Advanced Manual CSV" format. '
          'See README.md for more information',
     type=str
 )

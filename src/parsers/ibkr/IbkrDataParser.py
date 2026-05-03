@@ -232,7 +232,7 @@ class IbkrDataParser(AbstractDataParser):
                             f'from {quote_currency} to {base_currency}{self.__code__values_to_string(row.Code)}'
             )
 
-            # To prevent weird "Fee Forwarding" in cryptotaxcalculator.io that results in incorrect base currency
+            # To prevent weird "Fee Forwarding" in summ.com that results in incorrect base currency
             # total values, the forex fees are added as a separate transaction. This is probably the correct way of
             # treating it anyway, as the those fees are always in the base currency, so they aren't really a part
             # of the main transaction.
@@ -355,7 +355,7 @@ class IbkrDataParser(AbstractDataParser):
             ReferencePricePerUnit=round(abs(row.Proceeds / row.Quantity), 6),
             ReferencePriceCurrency=row.Currency,
 
-            # The opening trade FeeAmount is not included in QuoteAmount in cryptotaxcalculator.io import,
+            # The opening trade FeeAmount is not included in QuoteAmount in summ.com import,
             # but the closing trade FeeAmount is. So we have to set the QuoteAmount to a sum of those values.
             QuoteAmount=(row.Proceeds + row.Comm_Fee),
             QuoteCurrency=row.Currency,

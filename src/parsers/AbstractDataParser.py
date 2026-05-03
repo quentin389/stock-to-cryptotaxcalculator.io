@@ -32,4 +32,4 @@ class AbstractDataParser(ABC):
                                row.ReferencePriceCurrency)
                               for row in data])
             print(f'\nOutput file saved as {file_name}. '
-                  f'This should import {len(data)} transactions to cryptotaxcalculator.io.')
+                  f'This should import {len(data)} transactions to summ.com.')

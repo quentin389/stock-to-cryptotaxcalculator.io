@@ -57,7 +57,7 @@ class IgCfdDataParser(AbstractIgDataParser):
             # There is the problem here that the trades for US stocks are be conducted in USD, but all commissions
             # are in GBP, then, immediately after the trade, all USD values are converted to GBP. At least that's how
             # it works with default "instant currency conversion". To correctly model this, I'd have to create multiple
-            # transactions, due to limitations of the cryptotaxcalculator.io format for 'realized-loss/profit' type.
+            # transactions, due to limitations of the summ.com format for 'realized-loss/profit' type.
             # Even then, I'm not sure if this would be modeled accurately for HMRC. I could even argue that since
             # CFDs are supposed to be modeled as a simple difference profit and loss, doing it this simple way is more
             # correct than using any more in-depth method, and since the currency conversions for GBP are instant,

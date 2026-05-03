@@ -26,7 +26,7 @@ class Exchange(str, Enum):
     Dividends = 'Dividends'
     CFDs = 'CFDs'
 
-    # This is a special exchange name to flag it in cryptotaxcalculator.io as this indicates missing name.
+    # This is a special exchange name to flag it in summ.com as this indicates missing name.
     Unknown = 'Unknown'
 
 

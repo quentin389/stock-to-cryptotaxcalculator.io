@@ -1,11 +1,14 @@
-# Stock To cryptotaxcalculator.io (UK only)
+# Stock To summ.com (UK only)
+
+> Note: [summ.com](https://summ.com) was previously known as cryptotaxcalculator.io.
+> The repository name and code identifiers still reference the old name.
 
 ## Warnings
 * I do not guarantee that anything here will work or will be HMRC-compliant.
 * I have created this based on my transactions files.
   Many things are not implemented.
 * Do not upload multiple manual files covering the same transactions or re-upload
-  the same file in cryptotaxcalculator.io. This may mess things up.
+  the same file in summ.com. This may mess things up.
   Delete the old file first, then add the new one.
 
 ## Purpose
@@ -13,7 +16,7 @@
 UK taxes are, in the simplest situation, the same for crypto and stock.
 
 This set of scripts parses stock transaction files from several example
-stock exchanges formats to cryptotaxcalculator.io "Advanced Manual CSV" format,
+stock exchanges formats to summ.com "Advanced Manual CSV" format,
 by making the stock appear as custom coins and faking some transaction types
 in order to trick the calculator into doing your stock taxes along with the crypto
 taxes. Magic!
@@ -33,7 +36,7 @@ a deviation and produce random output.
 This means that it's possible that almost any new file being parsed will throw
 an error.
 
-Also, keep in mind that cryptotaxcalculator.io format and rules also change,
+Also, keep in mind that summ.com format and rules also change,
 so even with source files in correct format, in time something may change and
 stop producing desired effects.
 
@@ -65,10 +68,10 @@ This parser accepts the following formats:
   The equity award file has to be specified as a `--second_source` argument.
 
 Latest tax year for which given formats are confirmed to be working:
-* eToro - 2021-22
-* IG - 2021-22
-* IBKR - 2024-25
-* Schwab - 2024-25
+* eToro - 2021/22
+* IG - 2021/22
+* IBKR - 2024/25
+* Schwab - 2025/26
 
 ## How to use
 
