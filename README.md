@@ -1,5 +1,7 @@
 # Stock To summ.com (UK only)
 
+Updated for tax year 2025/26.
+
 > Note: [summ.com](https://summ.com) was previously known as cryptotaxcalculator.io.
 > The repository name and code identifiers still reference the old name.
 
