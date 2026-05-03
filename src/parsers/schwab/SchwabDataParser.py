@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pandas
 
-from helpers.stock_market import parse_ticker
+from src.helpers.stock_market import parse_ticker
 from src.config.types import OutputRow, OutputType, Exchange, AssetType
 from src.parsers.schwab.types import BrokerageRow, EquityAwardRow
 from src.parsers.AbstractDataParser import AbstractDataParser
