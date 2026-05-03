@@ -70,7 +70,7 @@ This parser accepts the following formats:
 Latest tax year for which given formats are confirmed to be working:
 * eToro - 2021/22
 * IG - 2021/22
-* IBKR - 2024/25
+* IBKR - 2025/26
 * Schwab - 2025/26
 
 ## How to use
